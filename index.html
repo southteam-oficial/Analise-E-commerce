@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>South Team BI | Painel Financeiro Shopee & Mercado Livre</title>
+    <meta name="description" content="Painel financeiro e operacional South Team para análise mensal histórica e acompanhamento semanal - Shopee e Mercado Livre">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header id="main-header">
+        <div class="header-content">
+            <div class="header-left">
+                <div class="logo-area">
+                    <div class="logo-icon" aria-hidden="true">
+                        <svg width="30" height="30" viewBox="0 0 36 36" fill="none">
+                            <rect width="36" height="36" rx="8" fill="#111113"/>
+                            <path d="M9 23L15 16L20 20L27 11" stroke="#DC2626" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="27" cy="11" r="2.3" fill="#FFFFFF"/>
+                        </svg>
+                    </div>
+                    <div class="logo-titles">
+                        <h1>South Team BI <span class="brand-sub">Lucro Real</span></h1>
+                        <span class="subtitle">
+                            Shopee &amp; Mercado Livre ·
+                            <strong id="header-period-text" class="subtitle-period">Aguardando dados</strong>
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Seletor de Modo (estilo Shopee "Current View") -->
+                <div id="workspace-tabs-nav" class="view-switcher" role="tablist" aria-label="Modo de análise">
+                    <span class="view-switcher-label">Visão:</span>
+                    <button type="button" role="tab" aria-selected="true" class="workspace-tab active" data-workspace-tab="history" onclick="switchWorkspaceTab('history')">
+                        <span>Meses Anteriores</span>
+                        <span class="workspace-tab-badge" id="tab-badge-history">0m</span>
+                    </button>
+                    <button type="button" role="tab" aria-selected="false" class="workspace-tab" data-workspace-tab="current" onclick="switchWorkspaceTab('current')">
+                        <span>Mês Atual (Semanal)</span>
+                        <span class="workspace-tab-badge neutral" id="tab-badge-current">Vazio</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <button type="button" id="db-status-pill" class="db-status-pill" title="Clique para verificar status e sincronizar pastas locais no banco SQLite" onclick="syncLocalFoldersAction()">⏳ Conectando...</button>
+
+                <button type="button" class="btn-icon" id="btn-sync-folders" title="Sincronizar pastas locais com o Banco SQLite" aria-label="Sincronizar pastas locais" onclick="syncLocalFoldersAction()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+                        <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
+                    </svg>
+                </button>
+                <button type="button" class="btn-icon" id="btn-publish-cloud" title="Publicar atualização na Nuvem (GitHub 24h)" aria-label="Publicar na Nuvem" onclick="publishToCloudAction()" style="display:none">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>
+                        <polyline points="16 16 12 12 8 16"/>
+                        <line x1="12" y1="12" x2="12" y2="21"/>
+                    </svg>
+                </button>
+                <button type="button" class="btn-icon" id="btn-costs-table" title="Gerenciar Custos e SKUs" aria-label="Gerenciar Custos e SKUs" onclick="openAllCostsModal()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/>
+                        <line x1="7" y1="7" x2="7.01" y2="7"/>
+                    </svg>
+                </button>
+                <button type="button" class="btn-icon" id="btn-snapshots" title="Snapshots e Histórico MoM" aria-label="Snapshots e Histórico" onclick="openSnapshotsModal()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                </button>
+                <button type="button" class="btn-icon" id="btn-info-modal" title="Regras de Cálculo e Ajuda" aria-label="Regras de Cálculo" onclick="openInfoModal()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="10"/>
+                        <line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>
+                    </svg>
+                </button>
+
+                <button type="button" id="btn-xlsx" class="btn btn-outline btn-sm" onclick="exportExcelReport()" style="display:none" title="Exportar dados para Excel (.xlsx)">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7,10 12,15 17,10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Exportar dados
+                </button>
+                <button type="button" id="btn-pdf" class="btn btn-dark btn-sm" onclick="exportPDF()" style="display:none">
+                    PDF
+                </button>
+                <button type="button" id="btn-import" class="btn btn-primary btn-sm" onclick="triggerActiveWorkspaceImport()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17,8 12,3 7,8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span id="btn-import-label">Importar p/ Banco</span>
+                </button>
+                <input type="file" id="file-input" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleFileImport(event, 'history')">
+                <input type="file" id="current-file-input" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleFileImport(event, 'current')">
+                <input type="file" id="backup-file-input" accept=".json" style="display:none" onchange="handleBackupFileImport(event)">
+            </div>
+        </div>
+    </header>
+
+    <!-- Sub-Navegação Horizontal estilo Shopee Business Insights -->
+    <nav id="shopee-subnav" class="shopee-subnav" aria-label="Seções de consulta">
+        <div class="shopee-subnav-inner">
+            <div class="subnav-tabs" role="tablist">
+                <button type="button" role="tab" aria-selected="true" class="subnav-tab active" data-subtab="overview" onclick="switchSubTab('overview')">Visão Geral</button>
+                <button type="button" role="tab" aria-selected="false" class="subnav-tab" data-subtab="products" onclick="switchSubTab('products')">Produtos &amp; Lucro</button>
+                <button type="button" role="tab" aria-selected="false" class="subnav-tab" data-subtab="sales" onclick="switchSubTab('sales')">Vendas &amp; Evolução</button>
+                <button type="button" role="tab" aria-selected="false" class="subnav-tab" data-subtab="audit" onclick="switchSubTab('audit')">Auditoria &amp; Riscos</button>
+                <button type="button" role="tab" aria-selected="false" class="subnav-tab" data-subtab="financial" onclick="switchSubTab('financial')">Financeiro &amp; Fluxo</button>
+            </div>
+            <div class="subnav-right-meta">
+                <button type="button" class="link-action" onclick="openCostsInfoShortcut()" id="subnav-sources-summary">
+                    Fontes ativas: <strong id="subnav-channels-label">—</strong>
+                </button>
+                <button type="button" class="link-action" onclick="saveCurrentSnapshot()">💾 Salvar Snapshot</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Faixa de Filtros Unificada (estilo "Período dos Dados | Tipo | Canal | Imposto") -->
+    <section id="history-workspace-bar" class="filter-bar-shell">
+        <div class="shopee-filter-bar">
+            <div class="filter-bar-left">
+                <div id="month-filter-wrap" class="filter-chip-group">
+                    <span class="filter-chip-label">Período dos Dados</span>
+                    <select id="month-mode-select" onchange="onMonthModeChange()" aria-label="Recorte mensal">
+                        <option value="all">Consolidado (Todos os Meses)</option>
+                        <option value="single">Por Mês</option>
+                        <option value="range">Intervalo de Meses</option>
+                    </select>
+                    <select id="month-single-select" onchange="onMonthValueChange()" style="display:none" aria-label="Selecionar mês"></select>
+                    <span id="month-range-wrap" class="month-range-wrap" style="display:none">
+                        <select id="month-from-select" onchange="onMonthValueChange()" aria-label="Mês inicial"></select>
+                        <span class="month-range-sep">até</span>
+                        <select id="month-to-select" onchange="onMonthValueChange()" aria-label="Mês final"></select>
+                    </span>
+                </div>
+
+                <div class="filter-chip-group">
+                    <span class="filter-chip-label">Canal</span>
+                    <div class="channel-tabs compact" role="group" aria-label="Filtrar por canal">
+                        <button type="button" class="channel-tab active" data-channel="all" onclick="setActiveChannel('all')">Todos</button>
+                        <button type="button" class="channel-tab" data-channel="shopee" onclick="setActiveChannel('shopee')">Shopee</button>
+                        <button type="button" class="channel-tab" data-channel="mercadolivre" onclick="setActiveChannel('mercadolivre')">Mercado Livre</button>
+                    </div>
+                </div>
+
+                <div class="filter-chip-group">
+                    <span class="filter-chip-label">Imposto</span>
+                    <div class="inline-num-wrap">
+                        <input type="number" id="tax-rate" value="9" min="0" max="100" step="0.5" aria-label="Alíquota de imposto">
+                        <span>%</span>
+                    </div>
+                </div>
+
+                <span class="period-inline-badge" id="period-text">—</span>
+            </div>
+
+            <div class="filter-bar-right">
+                <button type="button" class="btn btn-outline btn-sm" onclick="syncLocalFoldersAction()">↻ Sincronizar Pastas</button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('file-input').click()">+ Importar Mês Fechado</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="current-workspace-bar" class="filter-bar-shell" style="display:none">
+        <div class="shopee-filter-bar current-mode">
+            <div class="filter-bar-left">
+                <span class="context-tag tag-red">SEMANAL ISOLADO</span>
+                <span class="context-desc" id="current-draft-meta">Importe as planilhas desta semana (Shopee, Mercado Pago e Desempenho ML) sem alterar os meses fechados.</span>
+                <div class="filter-chip-group">
+                    <span class="filter-chip-label">Canal</span>
+                    <div class="channel-tabs compact" role="group" aria-label="Filtrar canal atual">
+                        <button type="button" class="channel-tab active" data-channel="all" onclick="setActiveChannel('all')">Todos</button>
+                        <button type="button" class="channel-tab" data-channel="shopee" onclick="setActiveChannel('shopee')">Shopee</button>
+                        <button type="button" class="channel-tab" data-channel="mercadolivre" onclick="setActiveChannel('mercadolivre')">Mercado Livre</button>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-bar-right">
+                <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('current-file-input').click()">📤 Importar Semanal</button>
+                <button type="button" class="btn btn-dark btn-sm" id="btn-promote-current" style="display:none" onclick="promoteCurrentMonthToHistory()">🔒 Gravar no SQLite</button>
+                <button type="button" class="btn btn-outline btn-sm" id="btn-clear-current" style="display:none" onclick="clearCurrentMonthWorkspace()">🗑️ Limpar Parcial</button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Loading -->
+    <div id="loading-screen">
+        <div class="loader-content">
+            <div class="spinner"></div>
+            <p id="loading-text">Conectando ao banco de dados SQLite...</p>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <section id="empty-state" style="display:none">
+        <div id="dropzone" class="dropzone" onclick="triggerActiveWorkspaceImport()">
+            <div class="dropzone-icon">
+                <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="17,8 12,3 7,8"/>
+                    <line x1="12" y1="3" x2="12" y2="15"/>
+                </svg>
+            </div>
+            <h2 id="empty-title">Importe suas planilhas da Shopee e/ou Mercado Livre</h2>
+            <p id="empty-subtitle">Arraste arquivos <code>.xlsx</code>, <code>.xls</code> ou <code>.csv</code> aqui (Pedidos Shopee, Recebimentos Mercado Pago ou Desempenho ML).</p>
+            <div style="display:flex; gap:12px; justify-content:center; flex-wrap:wrap;">
+                <button type="button" class="btn btn-primary" onclick="event.stopPropagation(); triggerActiveWorkspaceImport()">
+                    <span id="empty-primary-btn-label">Selecionar Planilhas</span>
+                </button>
+                <button type="button" class="btn btn-outline" id="empty-secondary-btn" onclick="event.stopPropagation(); loadExampleSpreadsheets()">
+                    Sincronizar Pastas Locais (Jan–Out)
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Dashboard Principal -->
+    <section id="dashboard" style="display:none">
+        <!-- Fontes Conectadas (linha compacta colapsável/discreta) -->
+        <div id="channels-bar" class="channels-strip">
+            <span class="period-kicker-mini" id="period-context-kicker">RECORTE HISTÓRICO · SQLITE</span>
+            <div class="channel-pills-row">
+                <div class="channel-pill" id="channel-card-shopee">
+                    <span class="channel-dot shp"></span>
+                    <strong>Shopee:</strong>
+                    <span id="channel-status-shopee">Não importado</span>
+                    <button type="button" class="pill-btn" id="btn-import-shopee" onclick="triggerActiveWorkspaceImport()">Trocar</button>
+                    <button type="button" class="pill-clear" id="channel-clear-shopee" style="display:none" title="Remover Shopee" onclick="handleClearChannelClick('shopee')">✕</button>
+                </div>
+                <div class="channel-pill" id="channel-card-ml">
+                    <span class="channel-dot ml"></span>
+                    <strong>Mercado Livre:</strong>
+                    <span id="channel-status-ml">Não importado</span>
+                    <button type="button" class="pill-btn" id="btn-import-ml" onclick="triggerActiveWorkspaceImport()">Trocar</button>
+                    <button type="button" class="pill-clear" id="channel-clear-ml" style="display:none" title="Remover ML" onclick="handleClearChannelClick('mercadolivre')">✕</button>
+                </div>
+                <div class="channel-pill" id="channel-card-mlperf">
+                    <span class="channel-dot perf"></span>
+                    <strong>Desemp. ML:</strong>
+                    <span id="channel-status-mlperf">Opcional</span>
+                    <button type="button" class="pill-btn" id="btn-import-mlperf" onclick="triggerActiveWorkspaceImport()">Trocar</button>
+                    <button type="button" class="pill-clear" id="channel-clear-mlperf" style="display:none" title="Remover Desemp. ML" onclick="handleClearChannelClick('mlPerf')">✕</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Painel de Ritmo Semanal (exibido na aba Mês Atual) -->
+        <div id="current-pace-panel" class="pace-panel" style="display:none"></div>
+
+        <!-- COCKPIT VISÃO GERAL (Ref. Shopee Business Insights) -->
+        <div id="overview-cockpit" class="overview-cockpit">
+            <!-- Linha 1: Métricas Principais + Gráfico de Tendência (68%) | Raio-X Financeiro (32%) -->
+            <div class="cockpit-main-row">
+                <div class="shopee-card main-metrics-card">
+                    <div class="card-head-row">
+                        <div>
+                            <h2 class="card-title">Métricas Principais</h2>
+                        </div>
+                        <div class="card-head-meta">
+                            <span>Métricas Selecionadas <strong id="selected-metrics-count">2</strong>/4</span>
+                            <span class="muted-sep">·</span>
+                            <span class="muted-hint">Clique nos cartões para destacar no gráfico</span>
+                        </div>
+                    </div>
+
+                    <!-- 4 Tiles Interativos Selecionáveis -->
+                    <div class="metric-tiles-row" id="kpi-grid">
+                        <div class="metric-tile selected accent-red" data-trend-metric="revenue" onclick="toggleTrendMetric('revenue')" role="button" tabindex="0">
+                            <div class="metric-tile-top">
+                                <span class="metric-tile-label">Receita Bruta</span>
+                                <span class="metric-dot-ind" style="background:#DC2626"></span>
+                            </div>
+                            <div class="metric-tile-value" id="dash-revenue">R$ 0,00</div>
+                            <div class="metric-tile-meta" id="kpi-meta-revenue"></div>
+                        </div>
+
+                        <div class="metric-tile selected accent-black" id="stat-profit-card" data-trend-metric="profit" onclick="toggleTrendMetric('profit')" role="button" tabindex="0">
+                            <div class="metric-tile-top">
+                                <span class="metric-tile-label">Lucro Líquido Real</span>
+                                <span class="metric-dot-ind" style="background:#111113"></span>
+                            </div>
+                            <div class="metric-tile-value" id="dash-profit">R$ 0,00</div>
+                            <div class="metric-tile-subrow">
+                                <span id="dash-margin" class="margin-inline-badge">Margem: 0%</span>
+                                <span class="metric-tile-meta" id="kpi-meta-profit"></span>
+                            </div>
+                        </div>
+
+                        <div class="metric-tile" data-trend-metric="orders" onclick="toggleTrendMetric('orders')" role="button" tabindex="0">
+                            <div class="metric-tile-top">
+                                <span class="metric-tile-label">Pedidos Válidos</span>
+                                <span class="metric-dot-ind" style="background:#059669"></span>
+                            </div>
+                            <div class="metric-tile-value" id="total-orders">0</div>
+                            <div class="metric-tile-meta">
+                                <span class="meta-inline-val"><strong id="total-units">0</strong> unidades vendidas</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-tile" data-trend-metric="cancelled" onclick="toggleTrendMetric('cancelled')" role="button" tabindex="0">
+                            <div class="metric-tile-top">
+                                <span class="metric-tile-label">Cancelados / Retidos</span>
+                                <button type="button" class="tile-inline-link" id="btn-audit-cancelled" onclick="event.stopPropagation(); openCancelledModal()">Auditar ↗</button>
+                            </div>
+                            <div class="metric-tile-value warn-ink" id="cancelled-orders">0</div>
+                            <div class="metric-tile-meta">
+                                <span class="meta-inline-val">Devoluções e recusas</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Gráfico de Tendências (Estilo Shopee Image 1) -->
+                    <div class="trend-chart-section">
+                        <div class="trend-chart-header">
+                            <span class="trend-chart-title">Gráfico de Tendências de Cada Métrica</span>
+                            <span class="trend-chart-granularity" id="trend-granularity-label">Série Mensal</span>
+                        </div>
+                        <div class="trend-canvas-wrap">
+                            <canvas id="chart-main-trend"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Coluna Direita: Raio-X de Custos e Despesas (Estilo Shopee "Métricas em Tempo Real") -->
+                <aside class="shopee-card side-metrics-card" id="right-summary-card">
+                    <div class="card-head-row compact">
+                        <div>
+                            <h2 class="card-title" id="right-summary-title">Raio-X de Custos</h2>
+                            <div class="live-status-line">
+                                <span class="live-dot"></span>
+                                <span id="right-summary-subtitle">Estrutura sobre receita bruta</span>
+                            </div>
+                        </div>
+                        <button type="button" class="link-more" onclick="switchSubTab('financial')">Detalhes &gt;</button>
+                    </div>
+
+                    <div class="side-hero-block">
+                        <div class="side-hero-label" id="right-hero-label">Lucro Médio / Pedido</div>
+                        <div class="side-hero-val" id="right-hero-value">R$ 0,00</div>
+                        <div class="side-hero-sub" id="right-hero-sub">Ticket médio R$ 0,00</div>
+                        <div class="spark-canvas-wrap">
+                            <canvas id="chart-sidebar-spark"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="side-quad-grid">
+                        <div class="side-quad-item">
+                            <span class="sq-label">Custo Produtos (CMV)</span>
+                            <span class="sq-val" id="dash-cost">R$ 0,00</span>
+                            <span class="sq-meta" id="kpi-meta-cost"></span>
+                        </div>
+                        <div class="side-quad-item">
+                            <span class="sq-label">Taxas Marketplace</span>
+                            <span class="sq-val" id="dash-fees">R$ 0,00</span>
+                            <span class="sq-meta" id="kpi-meta-fees"></span>
+                        </div>
+                        <div class="side-quad-item">
+                            <span class="sq-label">Frete Vendedor</span>
+                            <span class="sq-val" id="dash-shipping">R$ 0,00</span>
+                            <span class="sq-meta" id="kpi-meta-shipping"></span>
+                        </div>
+                        <div class="side-quad-item">
+                            <span class="sq-label">Imposto (<span id="tax-pct-label">9</span>%)</span>
+                            <span class="sq-val" id="dash-tax">R$ 0,00</span>
+                            <span class="sq-meta" id="kpi-meta-tax"></span>
+                        </div>
+                    </div>
+
+                    <div class="side-extras-footer">
+                        <div class="side-extras-top">
+                            <span>Despesas Extras (Emb. + Ads)</span>
+                            <strong id="dash-extras">R$ 0,00</strong>
+                        </div>
+                        <div class="side-extras-sub" id="dash-extras-sub">Emb: R$ 0,00 · Ads: R$ 0,00</div>
+                        <span id="kpi-meta-extras" style="display:none"></span>
+                    </div>
+                </aside>
+            </div>
+
+            <!-- Linha 2: Contribuição por Canal & Parâmetros Operacionais (Estilo Shopee "Fontes de Tráfego") -->
+            <div class="shopee-card contribution-card">
+                <div class="card-head-row compact">
+                    <h2 class="card-title">Contribuição por Canal &amp; Parâmetros Operacionais</h2>
+                    <button type="button" class="link-more" onclick="switchSubTab('sales')">Comparativo e Evolução Mensal &gt;</button>
+                </div>
+                <div class="contrib-split-grid">
+                    <div class="contrib-left-box">
+                        <div class="contrib-box-title">Detalhamento da contribuição de vendas e lucro</div>
+                        <div id="overview-channel-contrib" class="contrib-tiles-row"></div>
+                    </div>
+                    <div class="contrib-right-box">
+                        <div class="contrib-box-title">Parâmetros Operacionais &amp; Ads</div>
+                        <div id="ops-bar" class="ops-compact-grid">
+                            <div class="ops-cell">
+                                <label for="exp-packaging">Embalagem / unid.</label>
+                                <div class="ops-input-wrap"><span>R$</span><input type="number" id="exp-packaging" value="0" min="0" step="0.10"></div>
+                            </div>
+                            <div class="ops-cell">
+                                <label for="target-margin-input">Margem Alvo</label>
+                                <div class="ops-input-wrap"><input type="number" id="target-margin-input" value="20" min="1" max="80" step="1"><span>%</span></div>
+                            </div>
+                            <div class="ops-cell">
+                                <label for="exp-ads-shopee">Shopee Ads (período)</label>
+                                <div class="ops-input-wrap"><span>R$</span><input type="number" id="exp-ads-shopee" value="0" min="0" step="10"></div>
+                            </div>
+                            <div class="ops-cell">
+                                <label for="exp-ads-ml">Mercado Ads (período)</label>
+                                <div class="ops-input-wrap"><span>R$</span><input type="number" id="exp-ads-ml" value="0" min="0" step="10"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Linha 3: Resumo Produtos com Melhor Desempenho (Estilo Shopee Image 2/3) -->
+            <div class="shopee-card top-products-overview-card">
+                <div class="card-head-row compact">
+                    <h2 class="card-title">Produtos com Melhor Desempenho</h2>
+                    <button type="button" class="link-more" onclick="switchSubTab('products')">Ver tabela completa &gt;</button>
+                </div>
+                <div id="overview-top-products"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Painéis Analíticos Especializados (Sub-abas: Vendas & Evolução | Auditoria & Riscos | Financeiro & Fluxo) -->
+    <section id="analytics-section" style="display:none">
+        <div id="analytics-content"></div>
+    </section>
+
+    <!-- Controles e Tabela Completa (Sub-aba: Produtos & Lucro) -->
+    <section id="controls" style="display:none">
+        <div class="shopee-card table-controls-card">
+            <div class="quick-filter-pills" id="product-quick-filters" role="group" aria-label="Filtro rápido Curva ABC e alertas">
+                <button type="button" class="qfilter-pill active" data-qfilter="all" onclick="setProductQuickFilter('all')">Todos os Produtos</button>
+                <button type="button" class="qfilter-pill" data-qfilter="A" onclick="setProductQuickFilter('A')">Curva A (80% Rec.)</button>
+                <button type="button" class="qfilter-pill" data-qfilter="B" onclick="setProductQuickFilter('B')">Curva B</button>
+                <button type="button" class="qfilter-pill" data-qfilter="C" onclick="setProductQuickFilter('C')">Curva C</button>
+                <button type="button" class="qfilter-pill" data-qfilter="low" onclick="setProductQuickFilter('low')">Abaixo da Meta / Prejuízo</button>
+                <button type="button" class="qfilter-pill" data-qfilter="uncosted" onclick="setProductQuickFilter('uncosted')">Sem Custo Definido</button>
+            </div>
+            <div class="controls-bar">
+                <div class="search-box">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <input type="text" id="search-input" placeholder="Buscar produto, modelo ou SKU..." oninput="renderTable()">
+                </div>
+                <div class="date-filter-group">
+                    <label for="date-from">De</label>
+                    <input type="date" id="date-from" aria-label="Data inicial" onchange="setDateFilter()">
+                    <label for="date-to">Até</label>
+                    <input type="date" id="date-to" aria-label="Data final" onchange="setDateFilter()">
+                    <button type="button" id="btn-clear-dates" class="btn-date-clear" style="display:none" onclick="clearDateFilter()" title="Limpar filtro de datas">✕</button>
+                </div>
+                <select id="group-mode" onchange="setGroupingMode(this.value)" aria-label="Modo de agrupamento">
+                    <option value="model">Agrupar: Por Modelo</option>
+                    <option value="listing">Agrupar: Por Anúncio</option>
+                </select>
+                <select id="sort-filter" onchange="renderTable()" aria-label="Ordenação da tabela">
+                    <option value="profit-desc">Ordenar: Lucro (Maior)</option>
+                    <option value="revenue-desc">Ordenar: Receita (Maior)</option>
+                    <option value="qty-desc">Ordenar: Qtd Vendida</option>
+                    <option value="margin-desc">Ordenar: Margem (%)</option>
+                    <option value="name">Ordenar: Nome (A-Z)</option>
+                    <option value="cost-desc">Ordenar: Custo Total</option>
+                </select>
+            </div>
+        </div>
+    </section>
+
+    <!-- Tabela de Produtos -->
+    <section id="products-section" style="display:none">
+        <div class="table-container">
+            <table id="products-table">
+                <thead>
+                    <tr>
+                        <th class="th-product">Informação do Produto</th>
+                        <th class="th-num">Qtd</th>
+                        <th class="th-money">Receita Bruta</th>
+                        <th class="th-money">Custo Unit.</th>
+                        <th class="th-money">Custo Total</th>
+                        <th class="th-money">Taxas Mkt</th>
+                        <th class="th-money">Frete</th>
+                        <th class="th-money">Imposto</th>
+                        <th class="th-money">Emb. + Ads</th>
+                        <th class="th-money">Lucro Líquido</th>
+                        <th class="th-margin">Margem</th>
+                        <th class="th-insight">Status / Ação</th>
+                    </tr>
+                </thead>
+                <tbody id="products-body"></tbody>
+                <tfoot id="products-footer"></tfoot>
+            </table>
+        </div>
+    </section>
+
+    <!-- Orders detail modal -->
+    <div id="detail-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title" style="display:none">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2 id="modal-title">Detalhes do Produto</h2>
+                <button class="modal-close" aria-label="Fechar" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Cost edit modal -->
+    <div id="cost-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cost-modal-title" style="display:none">
+        <div class="modal-content small">
+            <div class="modal-header">
+                <h2 id="cost-modal-title">Editar Custo</h2>
+                <button class="modal-close" aria-label="Fechar" onclick="closeCostModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="cost-modal-body"></div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeCostModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="saveCost()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- All Costs & SKU Mapping Modal -->
+    <div id="all-costs-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="all-costs-title" style="display:none">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2 id="all-costs-title">🏷️ Tabela de Custos Cadastrados</h2>
+                <button class="modal-close" aria-label="Fechar" onclick="closeAllCostsModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="costs-toolbar">
+                    <div class="search-box" style="flex:1; min-width:220px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <input type="text" id="all-costs-search" class="search-input" placeholder="Buscar produto, modelo ou SKU..." oninput="renderAllCostsTable()">
+                    </div>
+                    <div class="channel-tabs" role="group" aria-label="Modo da tabela de custos">
+                        <button type="button" class="channel-tab active" id="cost-view-model" onclick="setCostModalView('model')">Modelos</button>
+                        <button type="button" class="channel-tab" id="cost-view-all" onclick="setCostModalView('all')">Todos / Variações</button>
+                    </div>
+                    <button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:0.8rem;" onclick="toggleSkuRuleForm()">+ Novo SKU</button>
+                </div>
+
+                <form id="sku-rule-form" class="sku-rule-form" style="display:none" onsubmit="handleAddSkuRule(event)">
+                    <input type="text" id="new-sku-prefix" placeholder="Prefixo do SKU (ex: LUVA-NEW)" required>
+                    <input type="text" id="new-sku-name" placeholder="Nome do Modelo / Produto" required>
+                    <input type="number" id="new-sku-cost" placeholder="Custo (R$)" min="0" step="0.01" required>
+                    <button type="submit" class="btn btn-primary" style="padding:8px 14px; font-size:0.8rem;">Vincular</button>
+                </form>
+
+                <div id="custom-sku-rules-bar" class="custom-sku-rules-bar" style="display:none"></div>
+                <div id="all-costs-list" style="max-height:420px; overflow-y:auto;"></div>
+            </div>
+            <div class="modal-footer" style="justify-content:space-between; flex-wrap:wrap;">
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                    <button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:0.8rem;" onclick="exportBackupJSON()">💾 Exportar Backup (.json)</button>
+                    <button type="button" class="btn btn-outline" style="padding:8px 14px; font-size:0.8rem;" onclick="document.getElementById('backup-file-input').click()">📂 Restaurar Backup</button>
+                    <button type="button" class="btn btn-outline" id="btn-download-db" style="padding:8px 14px; font-size:0.8rem; display:none;" onclick="downloadSqliteBackup()">🗄️ Baixar Banco (.db)</button>
+                    <button type="button" class="btn btn-outline" id="btn-modal-publish-cloud" style="padding:8px 14px; font-size:0.8rem; display:none;" onclick="publishToCloudAction()">☁️ Publicar na Nuvem</button>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button type="button" class="btn btn-outline" onclick="resetAllCostsToDefault()">Restaurar Padrão</button>
+                    <button type="button" class="btn btn-primary" onclick="closeAllCostsModal()">Concluído</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cancelled / Returned Orders Audit Modal -->
+    <div id="cancelled-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="cancelled-modal-title" style="display:none">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2 id="cancelled-modal-title">🚫 Auditoria de Pedidos Cancelados e Devolvidos</h2>
+                <button class="modal-close" aria-label="Fechar" onclick="closeCancelledModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="cancelled-modal-body"></div>
+        </div>
+    </div>
+
+    <!-- Monthly Snapshots / MoM Comparison Modal -->
+    <div id="snapshots-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="snapshots-modal-title" style="display:none">
+        <div class="modal-content wide">
+            <div class="modal-header">
+                <h2 id="snapshots-modal-title">📅 Snapshots e Comparativo (MoM)</h2>
+                <button class="modal-close" aria-label="Fechar" onclick="closeSnapshotsModal()">&times;</button>
+            </div>
+            <div class="modal-body" id="snapshots-modal-body"></div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="closeSnapshotsModal()">Fechar</button>
+                <button type="button" class="btn btn-primary" onclick="saveCurrentSnapshot()">💾 Salvar Visão Atual no Histórico</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- App Info & Calculation Rules Modal -->
+    <div id="info-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="info-modal-title" style="display:none">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="info-modal-title">ℹ️ Regras de Cálculo e Fluxo das Abas</h2>
+                <button class="modal-close" aria-label="Fechar" onclick="closeInfoModal()">&times;</button>
+            </div>
+            <div class="modal-body" style="line-height:1.6; font-size:0.88rem; color:var(--text-secondary);">
+                <h3 style="color:var(--brand-red); font-size:1rem; margin-bottom:6px;">🗂️ Organização das Duas Abas</h3>
+                <ul style="margin-left:20px; margin-bottom:16px;">
+                    <li><strong>Meses Anteriores (Histórico SQLite):</strong> Armazena e analisa todos os meses já fechados em <code>south_team_bi.db</code>. Planilhas importadas nesta aba entram definitivamente no banco histórico.</li>
+                    <li><strong>Mês Atual (Acompanhamento Semanal):</strong> Espaço isolado para subir planilhas parciais durante o mês em andamento, acompanhando ritmo diário (<em>run-rate</em>) e projeção de fechamento sem contaminar os meses anteriores.</li>
+                </ul>
+
+                <h3 style="color:var(--brand-red); font-size:1rem; margin-bottom:6px;">📊 Método de Leitura e Reconciliação</h3>
+                <ul style="margin-left:20px; margin-bottom:16px;">
+                    <li><strong>Shopee:</strong> Rateio proporcional das taxas (Comissão + Serviço + Frete Estimado) pelo subtotal de cada item; pedidos cancelados/devolvidos são separados para auditoria.</li>
+                    <li><strong>Mercado Livre (Mercado Pago):</strong> Considera apenas pagamentos <code>approved</code> deduplicados por <code>order_id</code>, reconciliando taxas e frete pelo valor líquido creditado.</li>
+                    <li><strong>Quantidade Multi-Unidade ML (3 Camadas):</strong> (1) Edição manual no modal; (2) Cruzamento com Desempenho ML; (3) Detecção por múltiplos de preço do modelo/SKU.</li>
+                    <li><strong>Imposto e Despesas Extras:</strong> O imposto incide sobre a Receita Bruta; embalagem soma por unidade; Ads são rateados proporcionalmente na receita do canal.</li>
+                </ul>
+
+                <h3 style="color:var(--brand-red); font-size:1rem; margin-bottom:6px;">💾 Banco SQLite &amp; Backup</h3>
+                <p>Custos unitários, regras de SKU, overrides de quantidade ML e snapshots são compartilhados entre ambas as abas e gravados automaticamente no arquivo <code>south_team_bi.db</code>.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeInfoModal()">Entendi</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <script src="vendor/xlsx.full.min.js"></script>
+    <script src="vendor/html2pdf.bundle.min.js"></script>
+    <script src="vendor/chart.umd.min.js"></script>
+    <script src="persistence.js"></script>
+    <script src="app.js"></script>
+    <script src="analytics.js"></script>
+</body>
+</html>

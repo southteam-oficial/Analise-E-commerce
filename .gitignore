@@ -1,0 +1,19 @@
+# Banco de dados SQLite local (armazenado apenas na máquina de administração)
+*.db
+*.db-shm
+*.db-wal
+
+# Pastas de relatórios brutos (processados localmente na central)
+Relatorio de Vendas 2026 ML/
+Relatorio de Vendas 2026 SHP/
+Relatorios de desempenho ML/
+dados *.xlsx
+~$*.xlsx
+*.xlsx
+*.xls
+*.csv
+
+# Logs e temporários
+*.log
+.DS_Store
+node_modules/

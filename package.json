@@ -1,0 +1,14 @@
+{
+  "name": "calculadora-lucro-south-team",
+  "version": "2.0.0",
+  "description": "Calculadora de Lucro Real Shopee & Mercado Livre - Padrão Nexus BI com SQLite local (Jan-Out 2026)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "publish": "node publish.js"
+  },
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "dependencies": {}
+}
