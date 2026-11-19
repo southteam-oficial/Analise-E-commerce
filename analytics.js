@@ -1757,7 +1757,7 @@ function renderOverviewExtras(totals) {
                 <button type="button" class="top-prod-tab ${activeOverviewTopTab === 'revenue' ? 'active' : ''}" data-top-mode="revenue" onclick="setOverviewTopTab('revenue')">Maior Receita Bruta</button>
                 <button type="button" class="top-prod-tab ${activeOverviewTopTab === 'low' ? 'active' : ''}" data-top-mode="low" onclick="setOverviewTopTab('low')">Abaixo da Meta / Prejuízo</button>
             </div>
-            <div style="overflow-x:auto;">
+            <div style="overflow-x:auto;-webkit-overflow-scrolling:touch;width:100%;max-width:100%;">
                 <table class="shopee-mini-table">
                     <thead>
                         <tr>

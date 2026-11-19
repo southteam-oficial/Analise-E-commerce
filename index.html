@@ -9,6 +9,18 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
+    <script>
+        (function() {
+            var host = window.location.hostname;
+            if (host.indexOf('github.io') !== -1 || (host.indexOf('localhost') === -1 && host.indexOf('127.0.0.1') === -1 && host !== '')) {
+                document.documentElement.classList.add('viewer-mode');
+                window.STBI_FORCE_VIEWER = true;
+                window.addEventListener('DOMContentLoaded', function() {
+                    if (document.body) document.body.classList.add('viewer-mode');
+                });
+            }
+        })();
+    </script>
 </head>
 <body>
     <header id="main-header">

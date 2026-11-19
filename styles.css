@@ -830,14 +830,32 @@ body {
 
 /* TOP PRODUCTS OVERVIEW TABLE (Shopee Image 2/3) */
 .top-prod-tabs {
-    display: flex; align-items: center; gap: 16px; border-bottom: 1px solid #F0F0F0; margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #F0F0F0;
+    margin-bottom: 10px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    width: 100%;
 }
+.top-prod-tabs::-webkit-scrollbar { display: none; }
 .top-prod-tab {
-    background: none; border: none; border-bottom: 2px solid transparent; padding: 7px 2px;
-    font-family: inherit; font-size: 0.8rem; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 7px 4px;
+    font-family: inherit;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 .top-prod-tab.active { color: var(--brand-red); border-bottom-color: var(--brand-red); font-weight: 700; }
-.shopee-mini-table { width: 100%; border-collapse: collapse; font-size: 0.81rem; }
+.shopee-mini-table { width: 100%; min-width: 620px; border-collapse: collapse; font-size: 0.81rem; }
 .shopee-mini-table th {
     background: #FAFAFA; color: var(--text-muted); font-size: 0.72rem; font-weight: 600;
     padding: 9px 10px; text-align: right; border-bottom: 1px solid #EBEBEB; white-space: nowrap;
@@ -1251,20 +1269,311 @@ tfoot td {
 ::-webkit-scrollbar-thumb { background: #C2C7D0; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
 
+/* ==========================================================================
+   REGRAS RÍGIDAS DE MODO VISUALIZADOR (NUVEM 24H)
+   ========================================================================== */
+body.viewer-mode #btn-import,
+html.viewer-mode #btn-import,
+body.viewer-mode #btn-sync-folders,
+html.viewer-mode #btn-sync-folders,
+body.viewer-mode #btn-publish-cloud,
+html.viewer-mode #btn-publish-cloud,
+body.viewer-mode #btn-download-db,
+html.viewer-mode #btn-download-db,
+body.viewer-mode #btn-modal-publish-cloud,
+html.viewer-mode #btn-modal-publish-cloud,
+body.viewer-mode #btn-promote-current,
+html.viewer-mode #btn-promote-current,
+body.viewer-mode #btn-clear-current,
+html.viewer-mode #btn-clear-current,
+body.viewer-mode #btn-clear-history,
+html.viewer-mode #btn-clear-history,
+body.viewer-mode #history-workspace-bar .filter-bar-right,
+html.viewer-mode #history-workspace-bar .filter-bar-right,
+body.viewer-mode #current-workspace-bar .filter-bar-right,
+html.viewer-mode #current-workspace-bar .filter-bar-right,
+body.viewer-mode .upload-zone,
+html.viewer-mode .upload-zone,
+body.viewer-mode .upload-card-wrapper,
+html.viewer-mode .upload-card-wrapper,
+body.viewer-mode .import-history-row,
+html.viewer-mode .import-history-row,
+body.viewer-mode .upload-box,
+html.viewer-mode .upload-box,
+body.viewer-mode .pill-btn,
+html.viewer-mode .pill-btn,
+body.viewer-mode .link-btn,
+html.viewer-mode .link-btn,
+body.viewer-mode input[type="file"],
+html.viewer-mode input[type="file"],
+body.viewer-mode #backup-file-input,
+html.viewer-mode #backup-file-input,
+body.viewer-mode .subnav-right-meta button:last-child,
+html.viewer-mode .subnav-right-meta button:last-child {
+    display: none !important;
+}
+
+/* ==========================================================================
+   DESIGN RESPONSIVO / ADAPTAÇÃO MOBILE (TABLETS & SMARTPHONES)
+   ========================================================================== */
+html, body {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+}
+
 @media (max-width: 1220px) {
     .header-content, .header-left, .header-actions { flex-wrap: wrap; }
 }
+
 @media (max-width: 1120px) {
     .cockpit-main-row, .contrib-split-grid, .pace-grid { grid-template-columns: 1fr; }
     .metric-tiles-row, .contrib-tiles-row { grid-template-columns: repeat(2, 1fr); }
 }
+
 @media (max-width: 900px) {
     .analytics-grid, .fin-split { grid-template-columns: 1fr; }
 }
+
 @media (max-width: 768px) {
-    #main-header, .shopee-subnav, .filter-bar-shell, #dashboard, #analytics-section, #controls, #products-section { padding-left: 1rem; padding-right: 1rem; }
-    .metric-tiles-row, .contrib-tiles-row, .ops-compact-grid, .abc-grid, .sku-rule-form, .pace-kpis { grid-template-columns: 1fr; }
-    .db-status-pill { display: none; }
+    #main-header {
+        padding: 8px 12px;
+    }
+    .header-content {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        min-height: auto;
+        padding: 4px 0;
+    }
+    .header-left {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+        gap: 8px;
+    }
+    .logo-area {
+        justify-content: flex-start;
+    }
+    .logo-titles h1 {
+        font-size: 0.95rem;
+    }
+    .view-switcher {
+        width: 100%;
+        display: flex;
+        box-sizing: border-box;
+    }
+    .workspace-tab {
+        flex: 1;
+        justify-content: center;
+        padding: 6px 4px;
+        font-size: 0.74rem;
+    }
+    .header-actions {
+        width: 100%;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 6px;
+    }
+    .header-actions .btn {
+        flex: 1;
+        justify-content: center;
+        padding: 6px 8px;
+        font-size: 0.74rem;
+    }
+    .db-status-pill {
+        font-size: 0.7rem;
+        padding: 4px 8px;
+        max-width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    /* Subnavegação estilo app */
+    .shopee-subnav {
+        padding: 0 8px;
+        position: sticky;
+        top: 0;
+        z-index: 110;
+    }
+    .shopee-subnav-inner {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0;
+        width: 100%;
+        max-width: 100%;
+    }
+    .subnav-tabs {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        gap: 0;
+    }
+    .subnav-tabs::-webkit-scrollbar {
+        display: none;
+    }
+    .subnav-tab {
+        padding: 10px 12px;
+        font-size: 0.8rem;
+        flex-shrink: 0;
+    }
+    .subnav-right-meta {
+        display: none;
+    }
+
+    /* Barra de filtros */
+    .filter-bar-shell {
+        padding: 0 8px;
+        margin-top: 8px;
+    }
+    .shopee-filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 10px 12px;
+        gap: 10px;
+    }
+    .filter-bar-left {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        width: 100%;
+    }
+    .filter-chip-group {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 4px;
+    }
+    .filter-chip-group select,
+    #month-filter-wrap select {
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+    }
+    .month-range-wrap {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .month-range-wrap select {
+        flex: 1;
+    }
+    .channel-tabs.compact {
+        width: 100%;
+        display: flex;
+    }
+    .channel-tabs.compact .channel-tab {
+        flex: 1;
+        padding: 6px 4px;
+        font-size: 0.74rem;
+        text-align: center;
+    }
+    .period-inline-badge {
+        width: 100%;
+        text-align: center;
+        box-sizing: border-box;
+    }
+    .filter-bar-right {
+        width: 100%;
+        display: flex;
+        gap: 6px;
+    }
+    .filter-bar-right .btn {
+        flex: 1;
+        justify-content: center;
+    }
+
+    /* Seções e Cards */
+    #dashboard, #products-section, #analytics-section, #controls {
+        padding: 8px;
+    }
+    .cockpit-main-row {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .cockpit-main-card, .cockpit-side-card {
+        padding: 12px;
+        border-radius: var(--radius-sm);
+    }
+    .metric-tiles-row {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 6px !important;
+    }
+    .metric-tile {
+        padding: 8px 10px;
+    }
+    .metric-tile .tile-title {
+        font-size: 0.7rem;
+    }
+    .metric-tile .tile-val {
+        font-size: 1.05rem;
+    }
+    .metric-tile .tile-sub {
+        font-size: 0.68rem;
+    }
+    .trend-chart-shell {
+        height: 220px !important;
+    }
+    .spark-chart-shell {
+        height: 120px !important;
+    }
+    .contrib-split-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    .contrib-tiles-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+    }
+    .top-products-overview-card {
+        padding: 12px;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+    }
+    .shopee-mini-table {
+        min-width: 600px;
+    }
+    .table-container {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        border-radius: var(--radius-sm);
+    }
+    #products-table {
+        min-width: 760px;
+    }
+    .ops-compact-grid, .abc-grid, .sku-rule-form, .pace-kpis {
+        grid-template-columns: 1fr;
+    }
+    .card-head-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+    .card-head-row .link-more {
+        align-self: flex-start;
+    }
+}
+
+@media (max-width: 480px) {
+    .metric-tiles-row {
+        grid-template-columns: 1fr 1fr !important;
+    }
+    .contrib-tiles-row {
+        grid-template-columns: 1fr;
+    }
+    .brand-sub {
+        display: none;
+    }
+    .logo-titles h1 {
+        font-size: 0.88rem;
+    }
+    .metric-tile .tile-val {
+        font-size: 0.95rem;
+    }
 }
 
 @media print {

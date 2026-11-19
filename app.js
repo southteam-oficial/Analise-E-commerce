@@ -1174,13 +1174,15 @@ function updateWorkspaceChromeUI() {
     }
 
     if (typeof isViewerMode !== 'undefined' && isViewerMode) {
+        document.documentElement.classList.add('viewer-mode');
+        document.body.classList.add('viewer-mode');
+        const mainImportBtn = document.getElementById('btn-import');
+        if (mainImportBtn) mainImportBtn.style.display = 'none';
         if (promoteBtn) promoteBtn.style.display = 'none';
         if (clearCurBtn) clearCurBtn.style.display = 'none';
-        const importBtnWrap = document.getElementById('btn-import-planilhas');
-        if (importBtnWrap) importBtnWrap.style.display = 'none';
         const clearHistBtn = document.getElementById('btn-clear-history');
         if (clearHistBtn) clearHistBtn.style.display = 'none';
-        document.querySelectorAll('.upload-zone, .upload-card-wrapper, .import-history-row, .upload-box').forEach(el => {
+        document.querySelectorAll('.upload-zone, .upload-card-wrapper, .import-history-row, .upload-box, .pill-btn, .link-btn').forEach(el => {
             el.style.display = 'none';
         });
         if (kicker) {

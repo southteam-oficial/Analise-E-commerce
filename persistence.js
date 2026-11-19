@@ -29,6 +29,11 @@ async function dbRequestJson(url, options = {}) {
 }
 
 async function initPersistenceBackend(maxAttempts = 3) {
+    // Se estiver explicitamente forçado ou no domínio github.io, carrega direto o snapshot estático sem tentar /api/health
+    if (typeof window !== 'undefined' && (window.STBI_FORCE_VIEWER || window.location.hostname.includes('github.io'))) {
+        return loadStaticSnapshotBackend();
+    }
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
         let timer = null;
         try {
@@ -44,6 +49,10 @@ async function initPersistenceBackend(maxAttempts = 3) {
                 dbHealthSummary = data;
                 isViewerMode = false;
                 publishedSnapshotData = null;
+                if (typeof document !== 'undefined') {
+                    document.documentElement.classList.remove('viewer-mode');
+                    document.body?.classList.remove('viewer-mode');
+                }
                 return true;
             }
         } catch {
@@ -54,7 +63,10 @@ async function initPersistenceBackend(maxAttempts = 3) {
         }
     }
 
-    // Modo Visualizador estático (Nuvem 24h no GitHub Pages / Vercel sem servidor Node local)
+    return loadStaticSnapshotBackend();
+}
+
+async function loadStaticSnapshotBackend() {
     try {
         const snapResp = await fetch('./data/published_snapshot.json', { cache: 'no-cache' });
         if (snapResp.ok) {
@@ -63,6 +75,10 @@ async function initPersistenceBackend(maxAttempts = 3) {
                 publishedSnapshotData = snap;
                 isViewerMode = true;
                 dbBackendActive = true;
+                if (typeof document !== 'undefined') {
+                    document.documentElement.classList.add('viewer-mode');
+                    document.body?.classList.add('viewer-mode');
+                }
                 dbHealthSummary = {
                     ok: true,
                     engine: 'static-snapshot',
