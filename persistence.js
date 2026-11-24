@@ -280,23 +280,25 @@ function downloadSqliteBackup() {
 }
 
 function serializeCurrentMonthDraft(workspaceObj) {
-    if (!workspaceObj || (!workspaceObj.shopee && !workspaceObj.mercadolivre && !workspaceObj.mlPerf)) {
+    if (!workspaceObj || (!workspaceObj.shopee && !workspaceObj.mercadolivre && !workspaceObj.tiktok && !workspaceObj.mlPerf)) {
         return null;
     }
     return {
         updatedAt: workspaceObj.updatedAt || Date.now(),
         shopee: serializeChannelData('shopee', workspaceObj.shopee),
         mercadolivre: serializeChannelData('mercadolivre', workspaceObj.mercadolivre),
+        tiktok: serializeChannelData('tiktok', workspaceObj.tiktok),
         mlPerf: serializeChannelData('mlPerf', workspaceObj.mlPerf)
     };
 }
 
 function hydrateCurrentMonthDraft(raw) {
-    if (!raw || typeof raw !== 'object') return { shopee: null, mercadolivre: null, mlPerf: null, updatedAt: 0 };
+    if (!raw || typeof raw !== 'object') return { shopee: null, mercadolivre: null, tiktok: null, mlPerf: null, updatedAt: 0 };
     return {
         updatedAt: raw.updatedAt || 0,
         shopee: raw.shopee ? hydrateChannelData({ ...raw.shopee, key: 'shopee' }) : null,
         mercadolivre: raw.mercadolivre ? hydrateChannelData({ ...raw.mercadolivre, key: 'mercadolivre' }) : null,
+        tiktok: raw.tiktok ? hydrateChannelData({ ...raw.tiktok, key: 'tiktok' }) : null,
         mlPerf: raw.mlPerf ? hydrateChannelData({ ...raw.mlPerf, key: 'mlPerf' }) : null
     };
 }

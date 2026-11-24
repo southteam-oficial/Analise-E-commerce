@@ -75,6 +75,7 @@ function classifyMLCancelledStatus(rawStatus) {
 function computeFinancialIntelligence() {
     const shOrders = (rawOrders || []).filter(o => o.channel === 'shopee');
     const mlOrders = (rawOrders || []).filter(o => o.channel === 'mercadolivre');
+    const tkOrders = (rawOrders || []).filter(o => o.channel === 'tiktok');
     const cancelled = activeCancelledOrders || [];
 
     // 1. Shopee Receita & Subsídios Comerciais
@@ -104,6 +105,66 @@ function computeFinancialIntelligence() {
         shopee.actionAdj += o.actionAdj || 0;
     });
     shopee.orders = shOrderIds.size;
+
+    // 1b. TikTok Shop: Estrutura de Taxas (Comissão 6% + SFP 6% + GMV Max ~3% + R$ 6/item + Afiliados) & Liquidação (Entrega + 7d)
+    const tkOrderIds = new Set();
+    const tiktok = {
+        orders: 0,
+        units: 0,
+        revenue: 0,
+        netReceived: 0,
+        fees: 0,
+        shipping: 0,
+        commAndSfp: 0,
+        gmvMaxFee: 0,
+        creatorFee: 0,
+        fixedItemFee: 0,
+        platformSubsidy: 0,
+        sellerDiscount: 0,
+        settledCount: 0,
+        settledNet: 0,
+        deliveredPendingCount: 0,
+        deliveredPendingNet: 0,
+        inTransitCount: 0,
+        inTransitNet: 0,
+        releaseCount: 0,
+        releaseSum: 0,
+        releaseAvg: 0
+    };
+    tkOrders.forEach(o => {
+        tkOrderIds.add(o.orderId);
+        const rev = o.subtotal || 0;
+        const net = o.netReceived || Math.max(0, rev - (o.itemFees || 0) - (o.itemShipping || 0));
+        tiktok.units += Math.max(1, Number(o.qty) || 1);
+        tiktok.revenue += rev;
+        tiktok.netReceived += net;
+        tiktok.fees += o.itemFees || 0;
+        tiktok.shipping += o.itemShipping || 0;
+        tiktok.commAndSfp += o.itemCommission || 0;
+        tiktok.gmvMaxFee += o.financingFee || 0;
+        tiktok.creatorFee += o.couponFee || 0;
+        tiktok.fixedItemFee += o.actionAdj || 0;
+        tiktok.platformSubsidy += o.pixAdj || 0;
+        tiktok.sellerDiscount += o.sellerDiscount || 0;
+
+        if (o.paymentType === 'settled') {
+            tiktok.settledCount += 1;
+            tiktok.settledNet += net;
+        } else if (o.paymentType === 'delivered_pending') {
+            tiktok.deliveredPendingCount += 1;
+            tiktok.deliveredPendingNet += net;
+        } else {
+            tiktok.inTransitCount += 1;
+            tiktok.inTransitNet += net;
+        }
+
+        if (Number.isFinite(o.releaseDays) && o.releaseDays >= 0) {
+            tiktok.releaseCount += 1;
+            tiktok.releaseSum += o.releaseDays;
+        }
+    });
+    tiktok.orders = tkOrderIds.size;
+    tiktok.releaseAvg = tiktok.releaseCount > 0 ? tiktok.releaseSum / tiktok.releaseCount : 0;
 
     // 2. Mercado Pago: Meios de Pagamento, Parcelamento e Prazo de Liberação (D+)
     const mlOrderIds = new Set();
@@ -197,7 +258,9 @@ function computeFinancialIntelligence() {
         mlClaimsCount: 0,
         mlChargebacksCount: 0,
         shCancelledCount: 0,
-        shCancelledAmount: 0
+        shCancelledAmount: 0,
+        tkCancelledCount: 0,
+        tkCancelledAmount: 0
     };
 
     cancelled.forEach(c => {
@@ -205,6 +268,11 @@ function computeFinancialIntelligence() {
         if (c.channel === 'shopee') {
             retention.shCancelledCount += 1;
             retention.shCancelledAmount += amt;
+            return;
+        }
+        if (c.channel === 'tiktok') {
+            retention.tkCancelledCount += 1;
+            retention.tkCancelledAmount += amt;
             return;
         }
         if (c.claimId) retention.mlClaimsCount += 1;
@@ -223,7 +291,16 @@ function computeFinancialIntelligence() {
         }
     });
 
-    return { shopee, mp, retention };
+    return { shopee, mp, tiktok, retention };
+}
+
+function formatProductChannelsLabel(channelsSet) {
+    if (!channelsSet) return 'Consolidado';
+    const labels = [];
+    if (channelsSet.has('shopee')) labels.push('Shopee');
+    if (channelsSet.has('mercadolivre')) labels.push('ML');
+    if (channelsSet.has('tiktok')) labels.push('TikTok');
+    return labels.join(' + ') || 'Consolidado';
 }
 
 function computeAuditFindings() {
@@ -231,8 +308,8 @@ function computeAuditFindings() {
     const products = Object.values(productSummary || {});
     const targetMargin = getTargetMarginPercent();
     const fin = computeFinancialIntelligence();
-    const includeML = activeChannel !== 'shopee';
-    const includeShopee = activeChannel !== 'mercadolivre';
+    const includeML = activeChannel === 'all' || activeChannel === 'mercadolivre';
+    const includeShopee = activeChannel === 'all' || activeChannel === 'shopee';
 
     // 1. CRITICO: Produtos vendidos sem custo cadastrado
     products
@@ -242,7 +319,7 @@ function computeAuditFindings() {
             findings.push({
                 severity: 'CRITICO',
                 category: 'Custos / CMV',
-                source: p.channels.has('shopee') && p.channels.has('mercadolivre') ? 'Shopee + ML' : (p.channels.has('mercadolivre') ? 'Mercado Livre' : 'Shopee'),
+                source: formatProductChannelsLabel(p.channels),
                 title: `Produto sem custo unitário: ${p.productName}`,
                 detail: `${p.totalQty} un. vendidas (${fmt(p.totalRevenue)}) sem CMV cadastrado — margem aparenta acima do real.`,
                 impactVal: p.totalRevenue,
@@ -261,7 +338,7 @@ function computeAuditFindings() {
             findings.push({
                 severity: 'CRITICO',
                 category: 'Rentabilidade',
-                source: p.channels.has('shopee') && p.channels.has('mercadolivre') ? 'Shopee + ML' : (p.channels.has('mercadolivre') ? 'Mercado Livre' : 'Shopee'),
+                source: formatProductChannelsLabel(p.channels),
                 title: `Prejuízo líquido em ${p.productName}`,
                 detail: `${p.totalQty} un. · Receita ${fmt(p.totalRevenue)} · Margem ${fmtPct(p._margin)} · Preço médio ${fmt(p._avgSellingPrice)}`,
                 impactVal: Math.abs(p._profit),
@@ -558,9 +635,10 @@ function renderAuditCardInnerHtml(auditPayload) {
 }
 
 function renderFinancialIntelCardHtml(fin) {
-    const { shopee, mp, retention } = fin;
+    const { shopee, mp, tiktok = {}, retention } = fin;
     const shHasData = shopee.orders > 0 || retention.shCancelledCount > 0;
     const mlHasData = mp.orders > 0 || retention.mlRefundedCount > 0 || retention.mlRejectedCount > 0 || retention.mlCancelledCount > 0;
+    const tkHasData = (tiktok.orders || 0) > 0 || (retention.tkCancelledCount || 0) > 0;
 
     const mlMethodsHtml = mp.paymentMethods.length > 0
         ? mp.paymentMethods.map(m => `
@@ -573,9 +651,10 @@ function renderFinancialIntelCardHtml(fin) {
 
     const mpTotalOrdersIncl = mp.orders || 1;
     const multiPct = mp.orders > 0 ? (mp.instMultiCount / mpTotalOrdersIncl) * 100 : 0;
+    const tkFeePct = tiktok.revenue > 0 ? (tiktok.fees / tiktok.revenue) * 100 : 0;
 
     return `
-        <h3>💳 Inteligência Financeira &amp; Fluxo de Caixa (Mercado Pago + Shopee)</h3>
+        <h3>💳 Inteligência Financeira &amp; Fluxo de Caixa (Mercado Pago + Shopee + TikTok Shop)</h3>
         <div class="fin-split">
             <div class="fin-box">
                 <h4>💙 Mercado Pago / ML — Meios, Fluxo (D+) &amp; Estornos Reais</h4>
@@ -638,6 +717,31 @@ function renderFinancialIntelCardHtml(fin) {
                     </div>
                 ` : '<p style="font-size:0.8rem;color:var(--text-muted);margin:6px 0;">Importe ou ative o canal Shopee para exibir subsídios comerciais e retenções.</p>'}
             </div>
+            ${tkHasData ? `
+            <div class="fin-box" style="grid-column: 1 / -1;">
+                <h4>🖤 TikTok Shop — Taxas Detalhadas (${fmtPct(tkFeePct)}), Subsídio Plataforma &amp; Liquidação (Entrega + 7 dias)</h4>
+                <div class="fin-row">
+                    <span>Receita do Vendedor vs. Subsídio TikTok (Cupom Plataforma)</span>
+                    <strong>Receita: ${fmt(tiktok.revenue)} · Cupom TikTok: +${fmt(tiktok.platformSubsidy || 0)} · Desc. Vendedor: ${fmt(tiktok.sellerDiscount || 0)}</strong>
+                </div>
+                <div class="fin-row">
+                    <span>Comissão Plataforma (6%) + SFP Frete Grátis (6%) + GMV Max (~3%)</span>
+                    <strong>Com.+SFP: ${fmt(tiktok.commAndSfp)} · GMV Max: ${fmt(tiktok.gmvMaxFee)}</strong>
+                </div>
+                <div class="fin-row">
+                    <span>Taxa Fixa (R$ 6/un.) + Comissão Afiliados/Criadores</span>
+                    <strong>Taxa Item: ${fmt(tiktok.fixedItemFee)} · Afiliados: ${fmt(tiktok.creatorFee)} · Total Taxas: ${fmt(tiktok.fees)} (${fmtPct(tkFeePct)})</strong>
+                </div>
+                <div class="fin-row">
+                    <span>Fluxo de Liquidação TikTok (Repasse Líquido: ${fmt(tiktok.netReceived)})</span>
+                    <strong style="color:var(--green);">Liquidados: ${fmt(tiktok.settledNet)} (${tiktok.settledCount} it.) · Aguard. Liq.: ${fmt(tiktok.deliveredPendingNet)} (${tiktok.deliveredPendingCount} it.) · Em Trânsito: ${fmt(tiktok.inTransitNet)} (${tiktok.inTransitCount} it.)</strong>
+                </div>
+                <div class="fin-row">
+                    <span>Prazo Médio de Liquidação / Cancelados TikTok</span>
+                    <strong>${tiktok.releaseCount > 0 ? `Méd. D+${tiktok.releaseAvg.toFixed(1).replace('.', ',')} após pagamento (Entrega + 7d)` : 'Entrega + 7 dias'} · Cancelados: ${retention.tkCancelledCount || 0} ped. (${fmt(retention.tkCancelledAmount || 0)})</strong>
+                </div>
+            </div>
+            ` : ''}
         </div>
     `;
 }
@@ -707,17 +811,23 @@ function computeMonthlyEvolution() {
                 label: typeof formatMonthKeyPt === 'function' ? formatMonthKeyPt(mk) : mk,
                 shOrderIds: new Set(),
                 mlOrderIds: new Set(),
+                tkOrderIds: new Set(),
                 cancelledIds: new Set(),
                 shUnits: 0,
                 mlUnits: 0,
+                tkUnits: 0,
                 shRevenue: 0,
                 mlRevenue: 0,
+                tkRevenue: 0,
                 shCost: 0,
                 mlCost: 0,
+                tkCost: 0,
                 shFees: 0,
                 mlFees: 0,
+                tkFees: 0,
                 shShipping: 0,
-                mlShipping: 0
+                mlShipping: 0,
+                tkShipping: 0
             });
         }
         return monthBuckets.get(mk);
@@ -746,6 +856,13 @@ function computeMonthlyEvolution() {
             b.mlCost += unitCost * qty;
             b.mlFees += Number(o.itemFees) || 0;
             b.mlShipping += Number(o.itemShipping) || 0;
+        } else if (o.channel === 'tiktok') {
+            b.tkOrderIds.add(o.orderId);
+            b.tkUnits += qty;
+            b.tkRevenue += Number(o.subtotal) || 0;
+            b.tkCost += unitCost * qty;
+            b.tkFees += Number(o.itemFees) || 0;
+            b.tkShipping += Number(o.itemShipping) || 0;
         }
     });
 
@@ -761,15 +878,16 @@ function computeMonthlyEvolution() {
         const b = monthBuckets.get(mk);
         const shRev = b.shRevenue;
         const mlRev = b.mlRevenue;
+        const tkRev = b.tkRevenue;
         const adsSh = shRev > 0 ? (Number(extraExpenses?.adsShopee) || 0) : 0;
         const adsMl = mlRev > 0 ? (Number(extraExpenses?.adsML) || 0) : 0;
-        const pkg = (b.shUnits + b.mlUnits) * (Number(extraExpenses?.packagingPerUnit) || 0);
+        const pkg = (b.shUnits + b.mlUnits + b.tkUnits) * (Number(extraExpenses?.packagingPerUnit) || 0);
         const extras = pkg + adsSh + adsMl;
 
-        const revenue = shRev + mlRev;
-        const cost = b.shCost + b.mlCost;
-        const fees = b.shFees + b.mlFees;
-        const shipping = b.shShipping + b.mlShipping;
+        const revenue = shRev + mlRev + tkRev;
+        const cost = b.shCost + b.mlCost + b.tkCost;
+        const fees = b.shFees + b.mlFees + b.tkFees;
+        const shipping = b.shShipping + b.mlShipping + b.tkShipping;
         const tax = revenue * taxRate;
         const profit = revenue - cost - fees - shipping - tax - extras;
         const margin = revenue > 0 ? (profit / revenue) * 100 : 0;
@@ -779,9 +897,9 @@ function computeMonthlyEvolution() {
             monthKey: mk,
             label: b.label,
             shortLabel: `${(MONTHS_PT[mNum] || mk.slice(5, 7)).slice(0, 3)}/${mk.slice(2, 4)}`,
-            orders: b.shOrderIds.size + b.mlOrderIds.size,
+            orders: b.shOrderIds.size + b.mlOrderIds.size + b.tkOrderIds.size,
             cancelledOrders: b.cancelledIds.size,
-            units: b.shUnits + b.mlUnits,
+            units: b.shUnits + b.mlUnits + b.tkUnits,
             revenue,
             cost,
             fees,
@@ -792,6 +910,7 @@ function computeMonthlyEvolution() {
             margin,
             shRevenue: shRev,
             mlRevenue: mlRev,
+            tkRevenue: tkRev,
             revDeltaPct: null
         };
     });
@@ -853,6 +972,7 @@ function renderMonthlyEvolutionCardHtml(months) {
     if (!Array.isArray(months) || months.length === 0) return '';
     const firstLabel = months[0].shortLabel;
     const lastLabel = months[months.length - 1].shortLabel;
+    const hasAnyTk = months.some(m => (m.tkRevenue || 0) > 0);
 
     const tableRows = months.map(m => {
         const isActive = isMonthHighlightedInEvolution(m.monthKey);
@@ -866,6 +986,7 @@ function renderMonthlyEvolutionCardHtml(months) {
                 <td>${m.units}</td>
                 <td>${fmt(m.shRevenue)}</td>
                 <td>${fmt(m.mlRevenue)}</td>
+                ${hasAnyTk ? `<td>${fmt(m.tkRevenue || 0)}</td>` : ''}
                 <td><strong>${fmt(m.revenue)}</strong></td>
                 <td>${deltaHtml}</td>
                 <td style="color:${m.profit >= 0 ? 'var(--green)' : 'var(--red)'};font-weight:700;">${fmt(m.profit)}</td>
@@ -897,6 +1018,7 @@ function renderMonthlyEvolutionCardHtml(months) {
                             <th>Unidades</th>
                             <th>Shopee</th>
                             <th>Mercado Livre</th>
+                            ${hasAnyTk ? '<th>TikTok Shop</th>' : ''}
                             <th>Receita Bruta</th>
                             <th>MoM Rec.</th>
                             <th>Lucro Líquido</th>
@@ -1081,7 +1203,8 @@ function computeCurrentMonthPace() {
     } else if (typeof inferMonthKey === 'function') {
         const shDates = currentWorkspaceData?.shopee?.dates || [];
         const mlDates = currentWorkspaceData?.mercadolivre?.dates || [];
-        monthKey = inferMonthKey([...shDates, ...mlDates], currentPeriodText);
+        const tkDates = currentWorkspaceData?.tiktok?.dates || [];
+        monthKey = inferMonthKey([...shDates, ...mlDates, ...tkDates], currentPeriodText);
     }
 
     const validMk = /^\d{4}-\d{2}$/.test(monthKey) ? monthKey : '';
@@ -1664,10 +1787,13 @@ function renderOverviewExtras(totals) {
     if (contribWrap) {
         const sh = totals.channels?.shopee || {};
         const ml = totals.channels?.mercadolivre || {};
+        const tk = totals.channels?.tiktok || {};
         const totalRev = Math.max(0.01, totals.revenue || 0);
         const shPct = ((sh.revenue || 0) / totalRev) * 100;
         const mlPct = ((ml.revenue || 0) / totalRev) * 100;
+        const tkPct = ((tk.revenue || 0) / totalRev) * 100;
         const aClass = totals.abc?.A || { count: 0, revenue: 0, revPct: 0, profit: 0 };
+        const showTikTokTile = (tk.orders || 0) > 0 || Boolean(channelData?.tiktok) || activeChannel === 'tiktok';
 
         contribWrap.innerHTML = `
             <div class="contrib-cell ${activeChannel === 'all' ? 'active' : ''} clickable" onclick="setActiveChannel('all')" title="Exibir todos os canais consolidados">
@@ -1685,11 +1811,19 @@ function renderOverviewExtras(totals) {
                 <div class="contrib-cell-val">${fmt(ml.revenue || 0)}</div>
                 <div class="contrib-cell-sub">${ml.orders || 0} ped. · Lucro ${fmt(ml.profit || 0)} (${fmtPct(ml.margin || 0)})</div>
             </div>
+            ${showTikTokTile ? `
+            <div class="contrib-cell ${activeChannel === 'tiktok' ? 'active' : ''} ${(tk.orders || 0) > 0 ? 'clickable' : ''}" ${(tk.orders || 0) > 0 ? 'onclick="setActiveChannel(\'tiktok\')" title="Filtrar somente TikTok Shop"' : ''}>
+                <div class="contrib-cell-top"><span>TikTok Shop</span><span class="contrib-cell-pct">${fmtPct(tkPct)} rec.</span></div>
+                <div class="contrib-cell-val">${fmt(tk.revenue || 0)}</div>
+                <div class="contrib-cell-sub">${tk.orders || 0} ped. · Lucro ${fmt(tk.profit || 0)} (${fmtPct(tk.margin || 0)})</div>
+            </div>
+            ` : `
             <div class="contrib-cell clickable" onclick="switchSubTab('products');setProductQuickFilter('A')" title="Abrir produtos Curva A (80% da receita)">
                 <div class="contrib-cell-top"><span>Curva A (Pareto)</span><span class="contrib-cell-pct">${fmtPct(aClass.revPct || 0)} rec.</span></div>
                 <div class="contrib-cell-val">${fmt(aClass.revenue || 0)}</div>
                 <div class="contrib-cell-sub">${aClass.count || 0} produtos-chave · Lucro ${fmt(aClass.profit || 0)} →</div>
             </div>
+            `}
         `;
     }
 
@@ -1731,6 +1865,7 @@ function renderOverviewExtras(totals) {
                 const chTags = [];
                 if (p.channels?.has('shopee')) chTags.push('<span class="channel-tag shopee">Shopee</span>');
                 if (p.channels?.has('mercadolivre')) chTags.push('<span class="channel-tag ml">ML</span>');
+                if (p.channels?.has('tiktok')) chTags.push('<span class="channel-tag tk">TikTok</span>');
                 return `
                     <tr>
                         <td><span class="rank-badge ${rankCls}">${idx + 1}</span></td>
@@ -1782,6 +1917,7 @@ function renderCancelledAuditSummaryCardHtml() {
     const list = activeCancelledOrders || [];
     const shCount = list.filter(o => o.channel === 'shopee').length;
     const mlCount = list.filter(o => o.channel === 'mercadolivre').length;
+    const tkCount = list.filter(o => o.channel === 'tiktok').length;
     const lostRev = list.reduce((s, o) => s + (o.amount || 0), 0);
     const reasonMap = new Map();
     list.forEach(o => {
@@ -1802,8 +1938,8 @@ function renderCancelledAuditSummaryCardHtml() {
                     <div style="font-size:1.15rem;font-weight:800;color:var(--red);margin-top:2px;">${list.length}</div>
                 </div>
                 <div style="background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-xs);padding:10px;">
-                    <div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;">Shopee / ML</div>
-                    <div style="font-size:1.0rem;font-weight:700;color:var(--text-primary);margin-top:4px;">${shCount} SHP · ${mlCount} ML</div>
+                    <div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;">Por Canal</div>
+                    <div style="font-size:0.95rem;font-weight:700;color:var(--text-primary);margin-top:4px;">${shCount} SHP · ${mlCount} ML${tkCount > 0 ? ` · ${tkCount} TT` : ''}</div>
                 </div>
                 <div style="background:var(--bg-input);border:1px solid var(--border-color);border-radius:var(--radius-xs);padding:10px;">
                     <div style="font-size:0.68rem;color:var(--text-muted);text-transform:uppercase;">Receita Não Realizada</div>
@@ -1866,19 +2002,21 @@ function renderAnalyticsSection() {
 
     const sh = lastGrandTotals.channels?.shopee || {};
     const ml = lastGrandTotals.channels?.mercadolivre || {};
+    const tk = lastGrandTotals.channels?.tiktok || {};
     const all = lastGrandTotals;
+    const hasTikTok = (tk.orders || 0) > 0 || Boolean(channelData?.tiktok);
 
     const comparisonRows = [
-        { label: 'Pedidos Válidos', format: 'int', sh: sh.orders || 0, ml: ml.orders || 0, all: all.validOrders || 0 },
-        { label: 'Unidades Vendidas', format: 'int', sh: sh.units || 0, ml: ml.units || 0, all: all.totalUnits || 0 },
-        { label: 'Receita Bruta', format: 'money', sh: sh.revenue || 0, ml: ml.revenue || 0, all: all.revenue || 0 },
-        { label: 'Custo Produtos', format: 'money', sh: sh.cost || 0, ml: ml.cost || 0, all: all.cost || 0 },
-        { label: 'Taxas Marketplace', format: 'money', sh: sh.fees || 0, ml: ml.fees || 0, all: all.fees || 0 },
-        { label: 'Frete Vendedor', format: 'money', sh: sh.shipping || 0, ml: ml.shipping || 0, all: all.shipping || 0 },
-        { label: 'Imposto', format: 'money', sh: sh.tax || 0, ml: ml.tax || 0, all: all.tax || 0 },
-        { label: 'Emb. + Ads', format: 'money', sh: sh.extras || 0, ml: ml.extras || 0, all: all.extras || 0 },
-        { label: 'Lucro Líquido', format: 'profit', sh: sh.profit || 0, ml: ml.profit || 0, all: all.profit || 0 },
-        { label: 'Margem Líquida', format: 'pct', sh: sh.margin || 0, ml: ml.margin || 0, all: all.margin || 0 }
+        { label: 'Pedidos Válidos', format: 'int', sh: sh.orders || 0, ml: ml.orders || 0, tk: tk.orders || 0, all: all.validOrders || 0 },
+        { label: 'Unidades Vendidas', format: 'int', sh: sh.units || 0, ml: ml.units || 0, tk: tk.units || 0, all: all.totalUnits || 0 },
+        { label: 'Receita Bruta', format: 'money', sh: sh.revenue || 0, ml: ml.revenue || 0, tk: tk.revenue || 0, all: all.revenue || 0 },
+        { label: 'Custo Produtos', format: 'money', sh: sh.cost || 0, ml: ml.cost || 0, tk: tk.cost || 0, all: all.cost || 0 },
+        { label: 'Taxas Marketplace', format: 'money', sh: sh.fees || 0, ml: ml.fees || 0, tk: tk.fees || 0, all: all.fees || 0 },
+        { label: 'Frete Vendedor', format: 'money', sh: sh.shipping || 0, ml: ml.shipping || 0, tk: tk.shipping || 0, all: all.shipping || 0 },
+        { label: 'Imposto', format: 'money', sh: sh.tax || 0, ml: ml.tax || 0, tk: tk.tax || 0, all: all.tax || 0 },
+        { label: 'Emb. + Ads', format: 'money', sh: sh.extras || 0, ml: ml.extras || 0, tk: tk.extras || 0, all: all.extras || 0 },
+        { label: 'Lucro Líquido', format: 'profit', sh: sh.profit || 0, ml: ml.profit || 0, tk: tk.profit || 0, all: all.profit || 0 },
+        { label: 'Margem Líquida', format: 'pct', sh: sh.margin || 0, ml: ml.margin || 0, tk: tk.margin || 0, all: all.margin || 0 }
     ];
 
     const formatCell = (val, kind) => {
@@ -1894,11 +2032,13 @@ function renderAnalyticsSection() {
         return fmt(val);
     };
 
+    const cmpHeadHtml = `<tr><th>Indicador</th><th>Shopee</th><th>Mercado Livre</th>${hasTikTok ? '<th>TikTok Shop</th>' : ''}<th>Consolidado</th></tr>`;
     const cmpRowsHtml = comparisonRows.map(r => `
         <tr>
             <td>${r.label}</td>
             <td>${formatCell(r.sh, r.format)}</td>
             <td>${formatCell(r.ml, r.format)}</td>
+            ${hasTikTok ? `<td>${formatCell(r.tk, r.format)}</td>` : ''}
             <td>${formatCell(r.all, r.format)}</td>
         </tr>
     `).join('');
@@ -1997,10 +2137,10 @@ function renderAnalyticsSection() {
             <div class="analytics-grid">
                 ${evolutionCardHtml}
                 <div class="analytics-card" id="analytics-comparison-card" data-analytics-group="sales">
-                    <h3>⚖️ Comparativo Direto: Shopee × Mercado Livre</h3>
+                    <h3>⚖️ Comparativo Direto por Canal</h3>
                     <table class="cmp-table">
                         <thead>
-                            <tr><th>Indicador</th><th>Shopee</th><th>Mercado Livre</th><th>Consolidado</th></tr>
+                            ${cmpHeadHtml}
                         </thead>
                         <tbody>${cmpRowsHtml}</tbody>
                     </table>
@@ -2048,10 +2188,10 @@ function renderAnalyticsSection() {
                     ${renderFinancialIntelCardHtml(auditPayload.fin)}
                 </div>
                 <div class="analytics-card full-span" id="analytics-comparison-card" data-analytics-group="financial">
-                    <h3>📊 Estrutura Financeira por Canal: Shopee × Mercado Livre</h3>
+                    <h3>📊 Estrutura Financeira por Canal</h3>
                     <table class="cmp-table">
                         <thead>
-                            <tr><th>Indicador</th><th>Shopee</th><th>Mercado Livre</th><th>Consolidado</th></tr>
+                            ${cmpHeadHtml}
                         </thead>
                         <tbody>${cmpRowsHtml}</tbody>
                     </table>
@@ -2070,6 +2210,7 @@ function openCancelledModal() {
     const list = activeCancelledOrders || [];
     const shList = list.filter(o => o.channel === 'shopee');
     const mlList = list.filter(o => o.channel === 'mercadolivre');
+    const tkList = list.filter(o => o.channel === 'tiktok');
     const totalAmount = list.reduce((s, o) => s + (o.amount || 0), 0);
 
     const reasonCounts = new Map();
@@ -2086,8 +2227,8 @@ function openCancelledModal() {
                 <div style="font-size:1.3rem;font-weight:800;color:var(--red);">${list.length}</div>
             </div>
             <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:12px;">
-                <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;">Shopee / Mercado Pago</div>
-                <div style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin-top:3px;">${shList.length} Shopee · ${mlList.length} ML</div>
+                <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;">Por Canal</div>
+                <div style="font-size:1.05rem;font-weight:700;color:var(--text-primary);margin-top:3px;">${shList.length} Shopee · ${mlList.length} ML${tkList.length > 0 ? ` · ${tkList.length} TikTok` : ''}</div>
             </div>
             <div style="background:var(--bg-card);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:12px;">
                 <div style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;">Receita Não Realizada</div>
@@ -2108,6 +2249,7 @@ function openCancelledModal() {
                 <option value="all">Todos os canais (${list.length})</option>
                 <option value="shopee">Shopee (${shList.length})</option>
                 <option value="mercadolivre">Mercado Livre (${mlList.length})</option>
+                <option value="tiktok">TikTok Shop (${tkList.length})</option>
             </select>
         </div>
         <div id="cancelled-table-wrap" style="max-height:380px;overflow-y:auto;"></div>
@@ -2154,7 +2296,7 @@ function renderCancelledModalTable() {
             <tbody>
                 ${rows.map(o => `
                     <tr>
-                        <td><span class="channel-tag ${o.channel === 'shopee' ? 'shopee' : 'ml'}">${o.channel === 'shopee' ? 'Shopee' : 'ML'}</span></td>
+                        <td><span class="channel-tag ${o.channel === 'shopee' ? 'shopee' : (o.channel === 'tiktok' ? 'tk' : 'ml')}">${o.channel === 'shopee' ? 'Shopee' : (o.channel === 'tiktok' ? 'TikTok' : 'ML')}</span></td>
                         <td style="font-size:0.74rem;color:var(--text-muted);">${escapeHtml(o.orderId)}</td>
                         <td style="white-space:nowrap;">${escapeHtml(o.date || '—')}</td>
                         <td>${escapeHtml(o.productName)}${o.sku ? `<div style="font-size:0.7rem;color:var(--text-muted);">SKU: ${escapeHtml(o.sku)}</div>` : ''}</td>
@@ -2195,7 +2337,7 @@ async function saveCurrentSnapshot() {
     const customLabel = String(customInput?.value || '').trim();
     const channelLabel = activeChannel === 'shopee'
         ? 'Shopee'
-        : (activeChannel === 'mercadolivre' ? 'ML' : 'Consolidado');
+        : (activeChannel === 'mercadolivre' ? 'ML' : (activeChannel === 'tiktok' ? 'TikTok' : 'Consolidado'));
     const label = customLabel || `${currentPeriodText} (${channelLabel})`;
 
     const snapshot = {
@@ -2331,34 +2473,35 @@ function buildStyledExcelSheet(rows, colWidths, fallbackRow) {
 function buildExecSummarySheetRows(round2) {
     const sh = lastGrandTotals.channels?.shopee || {};
     const ml = lastGrandTotals.channels?.mercadolivre || {};
+    const tk = lastGrandTotals.channels?.tiktok || {};
     const all = lastGrandTotals;
     const abc = all.abc || {};
     const avgTicket = all.validOrders > 0 ? all.revenue / all.validOrders : 0;
     const roas = all.ads > 0 ? all.revenue / all.ads : 0;
 
     const rows = [
-        { 'Indicador': 'Período Analisado', 'Shopee': currentPeriodText, 'Mercado Livre': currentPeriodText, 'Consolidado': currentPeriodText },
-        { 'Indicador': 'Imposto Aplicado (%)', 'Shopee': getTaxRatePercent(), 'Mercado Livre': getTaxRatePercent(), 'Consolidado': getTaxRatePercent() },
-        { 'Indicador': 'Margem Alvo (%)', 'Shopee': getTargetMarginPercent(), 'Mercado Livre': getTargetMarginPercent(), 'Consolidado': getTargetMarginPercent() },
-        { 'Indicador': 'Embalagem / Unid. (R$)', 'Shopee': round2(extraExpenses.packagingPerUnit), 'Mercado Livre': round2(extraExpenses.packagingPerUnit), 'Consolidado': round2(extraExpenses.packagingPerUnit) },
-        { 'Indicador': 'Ads Informado (R$)', 'Shopee': round2(extraExpenses.adsShopee), 'Mercado Livre': round2(extraExpenses.adsML), 'Consolidado': round2(extraExpenses.adsShopee + extraExpenses.adsML) },
-        { 'Indicador': 'Pedidos Válidos', 'Shopee': sh.orders || 0, 'Mercado Livre': ml.orders || 0, 'Consolidado': all.validOrders },
-        { 'Indicador': 'Cancelados / Retidos', 'Shopee': '', 'Mercado Livre': '', 'Consolidado': all.cancelledOrders },
-        { 'Indicador': 'Unidades Vendidas', 'Shopee': sh.units || 0, 'Mercado Livre': ml.units || 0, 'Consolidado': all.totalUnits },
-        { 'Indicador': 'Ticket Médio / Pedido', 'Shopee': round2(sh.orders > 0 ? sh.revenue / sh.orders : 0), 'Mercado Livre': round2(ml.orders > 0 ? ml.revenue / ml.orders : 0), 'Consolidado': round2(avgTicket) },
-        { 'Indicador': 'Receita Bruta', 'Shopee': round2(sh.revenue), 'Mercado Livre': round2(ml.revenue), 'Consolidado': round2(all.revenue) },
-        { 'Indicador': 'Custo Produtos (CMV)', 'Shopee': round2(sh.cost), 'Mercado Livre': round2(ml.cost), 'Consolidado': round2(all.cost) },
-        { 'Indicador': 'Taxas Marketplace', 'Shopee': round2(sh.fees), 'Mercado Livre': round2(ml.fees), 'Consolidado': round2(all.fees) },
-        { 'Indicador': 'Frete Vendedor', 'Shopee': round2(sh.shipping), 'Mercado Livre': round2(ml.shipping), 'Consolidado': round2(all.shipping) },
-        { 'Indicador': 'Imposto', 'Shopee': round2(sh.tax), 'Mercado Livre': round2(ml.tax), 'Consolidado': round2(all.tax) },
-        { 'Indicador': 'Emb. + Ads', 'Shopee': round2(sh.extras), 'Mercado Livre': round2(ml.extras), 'Consolidado': round2(all.extras) },
-        { 'Indicador': 'ROAS Geral (x)', 'Shopee': extraExpenses.adsShopee > 0 ? round2((sh.revenue || 0) / extraExpenses.adsShopee) : '', 'Mercado Livre': extraExpenses.adsML > 0 ? round2((ml.revenue || 0) / extraExpenses.adsML) : '', 'Consolidado': roas > 0 ? round2(roas) : '' },
-        { 'Indicador': 'Lucro Líquido Real', 'Shopee': round2(sh.profit), 'Mercado Livre': round2(ml.profit), 'Consolidado': round2(all.profit) },
-        { 'Indicador': 'Margem Líquida (%)', 'Shopee': round2(sh.margin), 'Mercado Livre': round2(ml.margin), 'Consolidado': round2(all.margin) },
-        { 'Indicador': '--- CURVA ABC (PARETO) ---', 'Shopee': 'Qtd Produtos', 'Mercado Livre': 'Receita (R$)', 'Consolidado': '% Receita / Lucro' },
-        { 'Indicador': 'Curva A (Núcleo até 80%)', 'Shopee': abc.A?.count || 0, 'Mercado Livre': round2(abc.A?.revenue || 0), 'Consolidado': `${round2(abc.A?.revPct || 0)}% | R$ ${round2(abc.A?.profit || 0)}` },
-        { 'Indicador': 'Curva B (80% a 95%)', 'Shopee': abc.B?.count || 0, 'Mercado Livre': round2(abc.B?.revenue || 0), 'Consolidado': `${round2(abc.B?.revPct || 0)}% | R$ ${round2(abc.B?.profit || 0)}` },
-        { 'Indicador': 'Curva C (Cauda > 95%)', 'Shopee': abc.C?.count || 0, 'Mercado Livre': round2(abc.C?.revenue || 0), 'Consolidado': `${round2(abc.C?.revPct || 0)}% | R$ ${round2(abc.C?.profit || 0)}` }
+        { 'Indicador': 'Período Analisado', 'Shopee': currentPeriodText, 'Mercado Livre': currentPeriodText, 'TikTok Shop': currentPeriodText, 'Consolidado': currentPeriodText },
+        { 'Indicador': 'Imposto Aplicado (%)', 'Shopee': getTaxRatePercent(), 'Mercado Livre': getTaxRatePercent(), 'TikTok Shop': getTaxRatePercent(), 'Consolidado': getTaxRatePercent() },
+        { 'Indicador': 'Margem Alvo (%)', 'Shopee': getTargetMarginPercent(), 'Mercado Livre': getTargetMarginPercent(), 'TikTok Shop': getTargetMarginPercent(), 'Consolidado': getTargetMarginPercent() },
+        { 'Indicador': 'Embalagem / Unid. (R$)', 'Shopee': round2(extraExpenses.packagingPerUnit), 'Mercado Livre': round2(extraExpenses.packagingPerUnit), 'TikTok Shop': round2(extraExpenses.packagingPerUnit), 'Consolidado': round2(extraExpenses.packagingPerUnit) },
+        { 'Indicador': 'Ads Informado (R$)', 'Shopee': round2(extraExpenses.adsShopee), 'Mercado Livre': round2(extraExpenses.adsML), 'TikTok Shop': 0, 'Consolidado': round2(extraExpenses.adsShopee + extraExpenses.adsML) },
+        { 'Indicador': 'Pedidos Válidos', 'Shopee': sh.orders || 0, 'Mercado Livre': ml.orders || 0, 'TikTok Shop': tk.orders || 0, 'Consolidado': all.validOrders },
+        { 'Indicador': 'Cancelados / Retidos', 'Shopee': '', 'Mercado Livre': '', 'TikTok Shop': '', 'Consolidado': all.cancelledOrders },
+        { 'Indicador': 'Unidades Vendidas', 'Shopee': sh.units || 0, 'Mercado Livre': ml.units || 0, 'TikTok Shop': tk.units || 0, 'Consolidado': all.totalUnits },
+        { 'Indicador': 'Ticket Médio / Pedido', 'Shopee': round2(sh.orders > 0 ? sh.revenue / sh.orders : 0), 'Mercado Livre': round2(ml.orders > 0 ? ml.revenue / ml.orders : 0), 'TikTok Shop': round2(tk.orders > 0 ? tk.revenue / tk.orders : 0), 'Consolidado': round2(avgTicket) },
+        { 'Indicador': 'Receita Bruta', 'Shopee': round2(sh.revenue), 'Mercado Livre': round2(ml.revenue), 'TikTok Shop': round2(tk.revenue), 'Consolidado': round2(all.revenue) },
+        { 'Indicador': 'Custo Produtos (CMV)', 'Shopee': round2(sh.cost), 'Mercado Livre': round2(ml.cost), 'TikTok Shop': round2(tk.cost), 'Consolidado': round2(all.cost) },
+        { 'Indicador': 'Taxas Marketplace', 'Shopee': round2(sh.fees), 'Mercado Livre': round2(ml.fees), 'TikTok Shop': round2(tk.fees), 'Consolidado': round2(all.fees) },
+        { 'Indicador': 'Frete Vendedor', 'Shopee': round2(sh.shipping), 'Mercado Livre': round2(ml.shipping), 'TikTok Shop': round2(tk.shipping), 'Consolidado': round2(all.shipping) },
+        { 'Indicador': 'Imposto', 'Shopee': round2(sh.tax), 'Mercado Livre': round2(ml.tax), 'TikTok Shop': round2(tk.tax), 'Consolidado': round2(all.tax) },
+        { 'Indicador': 'Emb. + Ads', 'Shopee': round2(sh.extras), 'Mercado Livre': round2(ml.extras), 'TikTok Shop': round2(tk.extras), 'Consolidado': round2(all.extras) },
+        { 'Indicador': 'ROAS Geral (x)', 'Shopee': extraExpenses.adsShopee > 0 ? round2((sh.revenue || 0) / extraExpenses.adsShopee) : '', 'Mercado Livre': extraExpenses.adsML > 0 ? round2((ml.revenue || 0) / extraExpenses.adsML) : '', 'TikTok Shop': '', 'Consolidado': roas > 0 ? round2(roas) : '' },
+        { 'Indicador': 'Lucro Líquido Real', 'Shopee': round2(sh.profit), 'Mercado Livre': round2(ml.profit), 'TikTok Shop': round2(tk.profit), 'Consolidado': round2(all.profit) },
+        { 'Indicador': 'Margem Líquida (%)', 'Shopee': round2(sh.margin), 'Mercado Livre': round2(ml.margin), 'TikTok Shop': round2(tk.margin), 'Consolidado': round2(all.margin) },
+        { 'Indicador': '--- CURVA ABC (PARETO) ---', 'Shopee': 'Qtd Produtos', 'Mercado Livre': 'Receita (R$)', 'TikTok Shop': '', 'Consolidado': '% Receita / Lucro' },
+        { 'Indicador': 'Curva A (Núcleo até 80%)', 'Shopee': abc.A?.count || 0, 'Mercado Livre': round2(abc.A?.revenue || 0), 'TikTok Shop': '', 'Consolidado': `${round2(abc.A?.revPct || 0)}% | R$ ${round2(abc.A?.profit || 0)}` },
+        { 'Indicador': 'Curva B (80% a 95%)', 'Shopee': abc.B?.count || 0, 'Mercado Livre': round2(abc.B?.revenue || 0), 'TikTok Shop': '', 'Consolidado': `${round2(abc.B?.revPct || 0)}% | R$ ${round2(abc.B?.profit || 0)}` },
+        { 'Indicador': 'Curva C (Cauda > 95%)', 'Shopee': abc.C?.count || 0, 'Mercado Livre': round2(abc.C?.revenue || 0), 'TikTok Shop': '', 'Consolidado': `${round2(abc.C?.revPct || 0)}% | R$ ${round2(abc.C?.profit || 0)}` }
     ];
 
     const activeBaseline = (typeof previousMonthAutoBaseline !== 'undefined' && previousMonthAutoBaseline)
@@ -2376,7 +2519,7 @@ function buildExecSummarySheetRows(round2) {
 }
 
 function buildFinancialSheetRows(fin, round2) {
-    const { shopee, mp, retention } = fin;
+    const { shopee, mp, tiktok = {}, retention } = fin;
     const rows = [
         { 'Bloco': 'Mercado Pago', 'Indicador': 'Receita Bruta Aprovada', 'Quantidade / Detalhe': `${mp.orders} pedidos`, 'Valor (R$)': round2(mp.revenue), '% / Taxa': '100%' },
         { 'Bloco': 'Mercado Pago', 'Indicador': 'Líquido Creditado (Net Received)', 'Quantidade / Detalhe': 'Após taxas e frete MP', 'Valor (R$)': round2(mp.netReceived), '% / Taxa': mp.revenue > 0 ? round2((mp.netReceived / mp.revenue) * 100) : 0 },
@@ -2408,6 +2551,19 @@ function buildFinancialSheetRows(fin, round2) {
         { 'Bloco': 'Shopee', 'Indicador': 'Ajuste Ação Comercial', 'Quantidade / Detalhe': 'Participação promocional', 'Valor (R$)': round2(shopee.actionAdj), '% / Taxa': '' },
         { 'Bloco': 'Shopee', 'Indicador': 'Cancelados / Devoluções Shopee', 'Quantidade / Detalhe': `${retention.shCancelledCount} pedidos`, 'Valor (R$)': round2(retention.shCancelledAmount), '% / Taxa': '' }
     );
+
+    if ((tiktok.orders || 0) > 0 || (retention.tkCancelledCount || 0) > 0) {
+        rows.push(
+            { 'Bloco': 'TikTok Shop', 'Indicador': 'Receita Bruta do Vendedor', 'Quantidade / Detalhe': `${tiktok.orders} pedidos (${tiktok.units} un.)`, 'Valor (R$)': round2(tiktok.revenue), '% / Taxa': '100%' },
+            { 'Bloco': 'TikTok Shop', 'Indicador': 'Subsídio / Cupom Plataforma TikTok', 'Quantidade / Detalhe': 'Reembolsado na receita do vendedor', 'Valor (R$)': round2(tiktok.platformSubsidy), '% / Taxa': '' },
+            { 'Bloco': 'TikTok Shop', 'Indicador': 'Comissão (6%) + Taxa SFP (6%)', 'Quantidade / Detalhe': '12% sobre a receita', 'Valor (R$)': round2(tiktok.commAndSfp), '% / Taxa': tiktok.revenue > 0 ? round2((tiktok.commAndSfp / tiktok.revenue) * 100) : 0 },
+            { 'Bloco': 'TikTok Shop', 'Indicador': 'Taxa de Anúncio GMV Max', 'Quantidade / Detalhe': '~3,03% sobre a receita', 'Valor (R$)': round2(tiktok.gmvMaxFee), '% / Taxa': tiktok.revenue > 0 ? round2((tiktok.gmvMaxFee / tiktok.revenue) * 100) : 0 },
+            { 'Bloco': 'TikTok Shop', 'Indicador': 'Taxa Fixa por Item Vendido', 'Quantidade / Detalhe': 'R$ 6,00 por unidade', 'Valor (R$)': round2(tiktok.fixedItemFee), '% / Taxa': tiktok.revenue > 0 ? round2((tiktok.fixedItemFee / tiktok.revenue) * 100) : 0 },
+            { 'Bloco': 'TikTok Shop', 'Indicador': 'Comissão Criadores / Afiliados', 'Quantidade / Detalhe': '3% a 6% nos pedidos de afiliado', 'Valor (R$)': round2(tiktok.creatorFee), '% / Taxa': tiktok.revenue > 0 ? round2((tiktok.creatorFee / tiktok.revenue) * 100) : 0 },
+            { 'Bloco': 'TikTok Shop', 'Indicador': 'Repasse Líquido TikTok', 'Quantidade / Detalhe': `Liq: R$ ${round2(tiktok.settledNet)} | Ag. Liq: R$ ${round2(tiktok.deliveredPendingNet)} | Trânsito: R$ ${round2(tiktok.inTransitNet)}`, 'Valor (R$)': round2(tiktok.netReceived), '% / Taxa': tiktok.revenue > 0 ? round2((tiktok.netReceived / tiktok.revenue) * 100) : 0 },
+            { 'Bloco': 'TikTok Shop', 'Indicador': 'Cancelados / Reembolsados TikTok', 'Quantidade / Detalhe': `${retention.tkCancelledCount || 0} pedidos`, 'Valor (R$)': round2(retention.tkCancelledAmount || 0), '% / Taxa': '' }
+        );
+    }
 
     return rows;
 }
@@ -2449,7 +2605,7 @@ function exportExcelReport() {
         'Produto': p.productName,
         'Modelo': p.modelKey || '',
         'SKUs': [...p.skus].join(', '),
-        'Canais': [p.channels.has('shopee') ? 'Shopee' : '', p.channels.has('mercadolivre') ? 'Mercado Livre' : ''].filter(Boolean).join(' + '),
+        'Canais': [p.channels.has('shopee') ? 'Shopee' : '', p.channels.has('mercadolivre') ? 'Mercado Livre' : '', p.channels.has('tiktok') ? 'TikTok Shop' : ''].filter(Boolean).join(' + '),
         'Qtd': p.totalQty,
         'Receita Bruta': round2(p.totalRevenue),
         'Custo Unitário': round2(p._costUnit),
@@ -2490,13 +2646,13 @@ function exportExcelReport() {
 
     // Aba 5: Reembolsos e Cancelados
     const cancelledRows = (activeCancelledOrders || []).map(o => ({
-        'Canal': o.channel === 'shopee' ? 'Shopee' : 'Mercado Livre',
+        'Canal': o.channel === 'shopee' ? 'Shopee' : (o.channel === 'tiktok' ? 'TikTok Shop' : 'Mercado Livre'),
         'Pedido': o.orderId,
         'Data': o.date || '',
         'Produto': o.productName || '',
         'SKU': o.sku || '',
         'Status': o.status || '',
-        'Classificação': o.channel === 'shopee' ? 'Cancelado / Devolvido' : classifyMLCancelledStatus(o.status),
+        'Classificação': (o.channel === 'shopee' || o.channel === 'tiktok') ? 'Cancelado / Devolvido' : classifyMLCancelledStatus(o.status),
         'Motivo / Detalhe': o.reason || '',
         'Valor Pedido': round2(o.amount || 0),
         'Valor Reembolsado': round2(o.amountRefunded || 0),
@@ -2513,6 +2669,7 @@ function exportExcelReport() {
         'Unidades': m.units,
         'Receita Shopee': round2(m.shRevenue),
         'Receita Mercado Livre': round2(m.mlRevenue),
+        'Receita TikTok Shop': round2(m.tkRevenue || 0),
         'Receita Bruta': round2(m.revenue),
         'Custo Produtos (CMV)': round2(m.cost),
         'Taxas Marketplace': round2(m.fees),

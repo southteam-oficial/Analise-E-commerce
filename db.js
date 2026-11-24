@@ -578,10 +578,10 @@ class SouthTeamDB {
 
     clearChannel(channel) {
         this.runInTransaction(() => {
-            if (channel === 'shopee' || channel === 'mercadolivre' || channel === 'mlPerf') {
+            if (channel === 'shopee' || channel === 'mercadolivre' || channel === 'tiktok' || channel === 'mlPerf') {
                 this.db.prepare('DELETE FROM import_files WHERE source_type = ?').run(channel);
             }
-            if (channel === 'shopee' || channel === 'mercadolivre') {
+            if (channel === 'shopee' || channel === 'mercadolivre' || channel === 'tiktok') {
                 this.db.prepare('DELETE FROM orders WHERE channel = ?').run(channel);
                 this.db.prepare('DELETE FROM cancelled_orders WHERE channel = ?').run(channel);
             } else if (channel === 'mlPerf') {

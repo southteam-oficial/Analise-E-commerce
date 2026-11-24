@@ -79,7 +79,7 @@ const SKU_MODEL_RULES = [
     { modelKey: 'CAP-MT', canonicalName: 'PROTETOR CABEÇA CAPACETE LUTA TREINO BOXE MUAY THAI MMA', defaultCost: 130.00, skuPrefixes: ['CAP-MT', 'ST-1201', 'ST-1202'], titleTest: t => t.includes('protetor') && (t.includes('cabeca') || t.includes('capacete')) },
     { modelKey: 'ESC-CHUTE', canonicalName: 'Escudo de Chute Grande Profissional PU Muay Thai Karatê MMA Treino South Team', defaultCost: 240.00, skuPrefixes: ['ESC-CHUTE', 'ST-1401', 'ST-1402', 'ST-1403', 'ST-1404'], titleTest: t => t.includes('escudo') && t.includes('chute') },
     { modelKey: 'KIM-GIFORTE', canonicalName: 'Kimono Jiu Jitsu Adulto Premium Calça + Jaqueta Gi Forte Durável Treino e Competição', defaultCost: 240.00, skuPrefixes: ['KIM-GIFORTE', 'KIMONO'], titleTest: t => !t.includes('faixa') && t.includes('kimono') && (t.includes('gi forte') || t.includes('jiu')) },
-    { modelKey: 'LBX-CLASSIC', canonicalName: 'Luva De Boxe South Team Classic - Ideal para Treino De Impacto Muay Thai e Kickboxing Resistente', defaultCost: 130.00, skuPrefixes: ['LBX-CLASSIC', 'CLASSIC-'] },
+    { modelKey: 'LBX-CLASSIC', canonicalName: 'Luva De Boxe South Team Classic - Ideal para Treino De Impacto Muay Thai e Kickboxing Resistente', defaultCost: 130.00, skuPrefixes: ['LBX-CLASSIC', 'CLASSIC-'], titleTest: t => !t.includes('kit') && t.includes('classic') && t.includes('luva') },
     { modelKey: 'KIT-FAN25', canonicalName: 'KIT Luva de Boxe Profissional Fantasy 2K25 + Bucal + Bandagem 3m – South Team', defaultCost: 132.00, skuPrefixes: [], titleTest: t => t.includes('kit') && (t.includes('fantasy') || t.includes('fantasia')) },
     { modelKey: 'LBX-FAN25', canonicalName: 'Luva de Boxe Fantasy para Treino Kickboxing e Luta – South Team', defaultCost: 94.00, skuPrefixes: ['LBX-FAN25', '10OZ', '12OZ', '14OZ', '16OZ'], titleTest: t => !t.includes('kit') && (t.includes('fantasy') || t.includes('fantasia')) },
     { modelKey: 'LBX-GOLDVEL', canonicalName: 'Luva de Boxe Profissional Gold Pro South Team Velcro Treino Sparring', defaultCost: 109.00, skuPrefixes: ['LBX-GOLDVEL', 'GOLDP-', 'GPV-'], titleTest: t => !t.includes('kit') && t.includes('gold pro') },
@@ -110,18 +110,21 @@ let latestSourcesStatus = null;
 let currentWorkspaceData = {
     shopee: null,
     mercadolivre: null,
+    tiktok: null,
     mlPerf: null,
     updatedAt: 0
 };
 let historyFallbackData = {
     shopee: null,
     mercadolivre: null,
+    tiktok: null,
     mlPerf: null
 };
 
 let channelData = {
     shopee: null,
     mercadolivre: null,
+    tiktok: null,
     mlPerf: null
 };
 let activeChannel = 'all';
@@ -584,7 +587,7 @@ function refreshAllChannelsModels() {
             o.defaultModelCost = model.defaultCost;
         });
     };
-    ['shopee', 'mercadolivre'].forEach(chKey => {
+    ['shopee', 'mercadolivre', 'tiktok'].forEach(chKey => {
         if (channelData[chKey]?.orders) applyOrderList(channelData[chKey].orders);
         if (currentWorkspaceData[chKey]?.orders) applyOrderList(currentWorkspaceData[chKey].orders);
         if (historyFallbackData[chKey]?.orders) applyOrderList(historyFallbackData[chKey].orders);
@@ -600,6 +603,7 @@ function recomputeAfterMetadataChange(options = { persistCurrent: true }) {
         syncCurrentWorkspaceInference();
         channelData.shopee = currentWorkspaceData.shopee;
         channelData.mercadolivre = currentWorkspaceData.mercadolivre;
+        channelData.tiktok = currentWorkspaceData.tiktok;
         channelData.mlPerf = currentWorkspaceData.mlPerf;
         rebuildActiveOrders();
         if (options.persistCurrent && typeof dbSaveCurrentMonthDraft === 'function') {
@@ -622,7 +626,11 @@ function recomputeAfterMetadataChange(options = { persistCurrent: true }) {
 function extractISODate(rawDate) {
     const str = String(rawDate || '').trim();
     if (!str) return '';
-    let m = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+    let m = str.match(/^(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])$/);
+    if (m) {
+        return `${m[1]}-${m[2]}-${m[3]}`;
+    }
+    m = str.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
     if (m) {
         return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`;
     }
@@ -1032,6 +1040,15 @@ function detectSpreadsheetType(wb) {
                 (rowStr.includes('net_received_amount') || rowStr.includes('valor total recebido'))) {
                 return { type: 'mercadolivre_mp', ws, rows, headerRowIdx: rIdx };
             }
+            if (normCells.some(c => c === 'id do pedido' || c.includes('id do pedido')) &&
+                (rowStr.includes('receita do pedido') || rowStr.includes('margem liquida do pedido') || rowStr.includes('tarifa de comissao da plataforma') || rowStr.includes('taxa de servico do sfp'))) {
+                return { type: 'tiktok_orders', wb, ws, rows, headerRowIdx: rIdx };
+            }
+            if (normCells.some(c => c === 'nome do produto') &&
+                normCells.some(c => c === 'id de produto') &&
+                (rowStr.includes('faixa de gmv') || rowStr.includes('cofinanciamento do tiktok'))) {
+                return { type: 'tiktok_products', wb, ws, rows, headerRowIdx: rIdx };
+            }
             if (normCells.some(c => c === 'id do pedido' || c === 'order id' || c.includes('id do pedido')) &&
                 (rowStr.includes('subtotal') || rowStr.includes('comissao') || rowStr.includes('produto'))) {
                 return { type: 'shopee', ws, rows, headerRowIdx: rIdx };
@@ -1042,16 +1059,17 @@ function detectSpreadsheetType(wb) {
 }
 
 function hasPrimaryChannelData() {
-    return Boolean(channelData.shopee || channelData.mercadolivre);
+    return Boolean(channelData.shopee || channelData.mercadolivre || channelData.tiktok);
 }
 
 function hasCurrentWorkspacePrimaryData() {
-    return Boolean(currentWorkspaceData.shopee || currentWorkspaceData.mercadolivre);
+    return Boolean(currentWorkspaceData.shopee || currentWorkspaceData.mercadolivre || currentWorkspaceData.tiktok);
 }
 
 function syncCurrentWorkspaceInference() {
     backfillChannelDates(currentWorkspaceData.shopee);
     backfillChannelDates(currentWorkspaceData.mercadolivre);
+    backfillChannelDates(currentWorkspaceData.tiktok);
     if (currentWorkspaceData.mercadolivre) {
         applyMLQuantityInference(
             currentWorkspaceData.mercadolivre,
@@ -1109,7 +1127,7 @@ function updateWorkspaceChromeUI() {
         if (typeof dbBackendActive !== 'undefined' && dbBackendActive && availableMonthKeys.length > 0) {
             histBadge.textContent = `${availableMonthKeys.length} ${availableMonthKeys.length === 1 ? 'mês' : 'meses'}`;
             histBadge.classList.remove('neutral');
-        } else if (historyFallbackData.shopee || historyFallbackData.mercadolivre) {
+        } else if (historyFallbackData.shopee || historyFallbackData.mercadolivre || historyFallbackData.tiktok) {
             histBadge.textContent = 'Ativo';
             histBadge.classList.remove('neutral');
         } else {
@@ -1122,7 +1140,8 @@ function updateWorkspaceChromeUI() {
     if (curBadge) {
         const shOrd = currentWorkspaceData.shopee?.validOrdersSet?.size || 0;
         const mlOrd = currentWorkspaceData.mercadolivre?.validOrdersSet?.size || 0;
-        const totalOrd = shOrd + mlOrd;
+        const tkOrd = currentWorkspaceData.tiktok?.validOrdersSet?.size || 0;
+        const totalOrd = shOrd + mlOrd + tkOrd;
         if (totalOrd > 0) {
             curBadge.textContent = `${totalOrd} ped.`;
             curBadge.classList.remove('neutral');
@@ -1143,7 +1162,7 @@ function updateWorkspaceChromeUI() {
     const curMeta = document.getElementById('current-draft-meta');
     const promoteBtn = document.getElementById('btn-promote-current');
     const clearCurBtn = document.getElementById('btn-clear-current');
-    const hasAnyCur = Boolean(currentWorkspaceData.shopee || currentWorkspaceData.mercadolivre || currentWorkspaceData.mlPerf);
+    const hasAnyCur = Boolean(currentWorkspaceData.shopee || currentWorkspaceData.mercadolivre || currentWorkspaceData.tiktok || currentWorkspaceData.mlPerf);
     if (promoteBtn) promoteBtn.style.display = hasCurrentWorkspacePrimaryData() ? '' : 'none';
     if (clearCurBtn) clearCurBtn.style.display = hasAnyCur ? '' : 'none';
     if (curMeta) {
@@ -1151,13 +1170,14 @@ function updateWorkspaceChromeUI() {
             const parts = [];
             if (currentWorkspaceData.shopee) parts.push(`Shopee (${currentWorkspaceData.shopee.validOrdersSet.size} ped.)`);
             if (currentWorkspaceData.mercadolivre) parts.push(`ML (${currentWorkspaceData.mercadolivre.validOrdersSet.size} ped.)`);
+            if (currentWorkspaceData.tiktok) parts.push(`TikTok (${currentWorkspaceData.tiktok.validOrdersSet.size} ped.)`);
             if (currentWorkspaceData.mlPerf) parts.push(`Desemp. ML (${currentWorkspaceData.mlPerf.multiUnitAdsCount} combos)`);
             const dtStr = currentWorkspaceData.updatedAt
                 ? ` · Atualizado ${new Date(currentWorkspaceData.updatedAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`
                 : '';
             curMeta.textContent = `Parcial carregada: ${parts.join(' + ')}${dtStr}`;
         } else {
-            curMeta.textContent = 'Importe os relatórios parciais desta semana (Shopee, Mercado Pago e Desempenho ML) para acompanhar o ritmo do mês.';
+            curMeta.textContent = 'Importe os relatórios parciais desta semana (Shopee, Mercado Pago, TikTok Shop e Desempenho ML) para acompanhar o ritmo do mês.';
         }
     }
 
@@ -1240,6 +1260,7 @@ function updateSubnavSummary() {
     const parts = [];
     if (channelData.shopee) parts.push(`Shopee (${channelData.shopee.validOrdersSet.size})`);
     if (channelData.mercadolivre) parts.push(`ML (${channelData.mercadolivre.validOrdersSet.size})`);
+    if (channelData.tiktok) parts.push(`TikTok (${channelData.tiktok.validOrdersSet.size})`);
     if (channelData.mlPerf) parts.push(`Perf (${channelData.mlPerf.multiUnitAdsCount})`);
     labelEl.textContent = parts.length > 0 ? parts.join(' · ') : 'Nenhuma carregada';
 }
@@ -1311,6 +1332,7 @@ function switchWorkspaceTab(tab) {
         syncCurrentWorkspaceInference();
         channelData.shopee = currentWorkspaceData.shopee;
         channelData.mercadolivre = currentWorkspaceData.mercadolivre;
+        channelData.tiktok = currentWorkspaceData.tiktok;
         channelData.mlPerf = currentWorkspaceData.mlPerf;
         activeChannel = 'all';
         rebuildActiveOrders();
@@ -1327,9 +1349,11 @@ function switchWorkspaceTab(tab) {
         } else {
             channelData.shopee = historyFallbackData.shopee;
             channelData.mercadolivre = historyFallbackData.mercadolivre;
+            channelData.tiktok = historyFallbackData.tiktok;
             channelData.mlPerf = historyFallbackData.mlPerf;
             backfillChannelDates(channelData.shopee);
             backfillChannelDates(channelData.mercadolivre);
+            backfillChannelDates(channelData.tiktok);
             if (channelData.mercadolivre) applyMLQuantityInference(channelData.mercadolivre);
             rebuildActiveOrders();
         }
@@ -1671,6 +1695,8 @@ function rebuildDbActiveView() {
     const shCancelled = (dbFullDataset.cancelledOrders || []).filter(c => c.channel === 'shopee' && matchesMonthSelection(c.monthKey));
     const mlOrders = dbFullDataset.orders.filter(o => o.channel === 'mercadolivre' && matchesMonthSelection(o.monthKey));
     const mlCancelled = (dbFullDataset.cancelledOrders || []).filter(c => c.channel === 'mercadolivre' && matchesMonthSelection(c.monthKey));
+    const tkOrders = dbFullDataset.orders.filter(o => o.channel === 'tiktok' && matchesMonthSelection(o.monthKey));
+    const tkCancelled = (dbFullDataset.cancelledOrders || []).filter(c => c.channel === 'tiktok' && matchesMonthSelection(c.monthKey));
     const perfRows = (dbFullDataset.mlPerfRows || []).filter(r => matchesMonthSelection(r.monthKey));
 
     channelData.shopee = (shOrders.length > 0 || shCancelled.length > 0)
@@ -1679,6 +1705,16 @@ function rebuildDbActiveView() {
             cancelledOrders: shCancelled,
             validOrdersSet: new Set(shOrders.map(o => o.orderId)),
             cancelledCount: shCancelled.length,
+            periodText
+        }
+        : null;
+
+    channelData.tiktok = (tkOrders.length > 0 || tkCancelled.length > 0)
+        ? {
+            orders: tkOrders,
+            cancelledOrders: tkCancelled,
+            validOrdersSet: new Set(tkOrders.map(o => o.orderId)),
+            cancelledCount: tkCancelled.length,
             periodText
         }
         : null;
@@ -1901,15 +1937,18 @@ async function loadInitialChannels() {
         showLoading(true);
         try {
             const stored = await idbLoadAllChannels();
-            if (stored && (stored.shopee || stored.mercadolivre)) {
+            if (stored && (stored.shopee || stored.mercadolivre || stored.tiktok)) {
                 historyFallbackData.shopee = stored.shopee || null;
                 historyFallbackData.mercadolivre = stored.mercadolivre || null;
+                historyFallbackData.tiktok = stored.tiktok || null;
                 historyFallbackData.mlPerf = stored.mlPerf || null;
                 channelData.shopee = historyFallbackData.shopee;
                 channelData.mercadolivre = historyFallbackData.mercadolivre;
+                channelData.tiktok = historyFallbackData.tiktok;
                 channelData.mlPerf = historyFallbackData.mlPerf;
                 backfillChannelDates(channelData.shopee);
                 backfillChannelDates(channelData.mercadolivre);
+                backfillChannelDates(channelData.tiktok);
                 refreshAllChannelsModels();
                 if (channelData.mercadolivre) applyMLQuantityInference(channelData.mercadolivre);
                 rebuildActiveOrders();
@@ -2034,6 +2073,17 @@ async function importCurrentMonthFiles(fileList) {
                 currentWorkspaceData.mercadolivre = chObj;
                 loadedLabels.push(`Mercado Livre (${chObj.validOrdersSet.size} ped.)`);
                 importedCount++;
+            } else if (payload.sourceType === 'tiktok') {
+                if (payload.isTikTokProductList && currentWorkspaceData.tiktok && !currentWorkspaceData.tiktok.isProductListFallback) {
+                    currentWorkspaceData.tiktok.perfSummary = payload.perfSummary || null;
+                    loadedLabels.push(`Desempenho TikTok (${payload.perfSummary?.productsCount || 0} prod.)`);
+                } else {
+                    if (payload.perfSummary) chObj.perfSummary = payload.perfSummary;
+                    if (payload.isTikTokProductList) chObj.isProductListFallback = true;
+                    currentWorkspaceData.tiktok = chObj;
+                    loadedLabels.push(`TikTok Shop (${chObj.validOrdersSet.size} ped.)`);
+                }
+                importedCount++;
             } else if (payload.sourceType === 'mlPerf') {
                 currentWorkspaceData.mlPerf = chObj;
                 loadedLabels.push(`Desempenho ML (${chObj.multiUnitAdsCount} combos)`);
@@ -2055,6 +2105,7 @@ async function importCurrentMonthFiles(fileList) {
 
         channelData.shopee = currentWorkspaceData.shopee;
         channelData.mercadolivre = currentWorkspaceData.mercadolivre;
+        channelData.tiktok = currentWorkspaceData.tiktok;
         channelData.mlPerf = currentWorkspaceData.mlPerf;
         activeChannel = 'all';
         rebuildActiveOrders();
@@ -2189,11 +2240,439 @@ function processWorkbook(data, filename = '', options = {}) {
     if (detected.type === 'mercadolivre_perf') {
         return parseMLPerfWorkbook(detected.rows, detected.headerRowIdx, filename, options);
     }
+    if (detected.type === 'tiktok_orders') {
+        return parseTikTokOrdersWorkbook(detected.wb || wb, detected.rows, detected.headerRowIdx, filename, options);
+    }
+    if (detected.type === 'tiktok_products') {
+        return parseTikTokProductsWorkbook(detected.rows, detected.headerRowIdx, filename, options);
+    }
 
     if (!options.silent) {
-        showToast(`Formato de planilha não reconhecido em "${filename}". Use pedidos Shopee, recebimentos Mercado Pago ou Desempenho ML.`, 'error');
+        showToast(`Formato de planilha não reconhecido em "${filename}". Use Shopee, Mercado Pago, TikTok Shop ou Desempenho ML.`, 'error');
     }
     return false;
+}
+
+function formatTikTokDateVal(rawVal) {
+    const str = String(rawVal || '').trim();
+    if (!str || str === '0') return '';
+    const m = str.match(/^(20\d{2})(0[1-9]|1[0-2])([0-2]\d|3[01])$/);
+    if (m) return `${m[1]}-${m[2]}-${m[3]}`;
+    return formatCellDate(rawVal);
+}
+
+function parseTikTokOrdersWorkbook(wb, rows, headerRowIdx, filename, options = {}) {
+    const headerRow = (rows[headerRowIdx] || []).map(c => normalizeText(c));
+    const findCol = (patterns, fallbackIdx) => {
+        for (const pat of patterns) {
+            const idx = headerRow.findIndex(h => pat.test(h));
+            if (idx >= 0) return idx;
+        }
+        return fallbackIdx;
+    };
+
+    const COL = {
+        ORDER_ID: findCol([/^id do pedido$/i, /id do pedido/i], 0),
+        SKU_ID: findCol([/^id do sku$/i, /id do sku/i], 1),
+        VARIATION: findCol([/^nome do sku$/i, /nome do sku/i], 2),
+        PRODUCT_NAME: findCol([/^nome do produto$/i, /nome do produto/i], 3),
+        REVENUE: findCol([/^receita do pedido$/i, /receita do pedido/i], 4),
+        ORDER_COST: findCol([/^custo do pedido$/i, /custo do pedido/i], 5),
+        NET_MARGIN: findCol([/^margem liquida do pedido$/i, /margem liquida/i], 6),
+        QTY: findCol([/^itens vendidos$/i, /itens vendidos/i], 7),
+        PAY_DATE: findCol([/^data de pagamento do pedido$/i, /data de pagamento/i], 8),
+        SHIP_DATE: findCol([/^data de envio do pedido$/i, /data de envio/i], 9),
+        DELIV_DATE: findCol([/^data de entrega do pedido$/i, /data de entrega/i], 10),
+        SETTLE_DATE: findCol([/^data de liquidacao do pedido$/i, /data de liquidacao/i], 11),
+        EST_SETTLE: findCol([/^tempo de liquidacao estimado$/i, /tempo de liquidacao/i], 14),
+        UNSETTLE_REASON: findCol([/^motivo da nao liquidacao$/i, /motivo da nao liquidacao/i], 15),
+        STATUS: findCol([/^status do pedido$/i, /^status$/i], 16),
+        SUBTOTAL_BRUTO: findCol([/subtotal do item antes dos descontos/i], 19),
+        SELLER_DISCOUNT: findCol([/descontos financiados pelo vendedor/i], 20),
+        REFUND_AMOUNT: findCol([/reembolsos de produtos/i], 21),
+        PLATFORM_COMM: findCol([/tarifa de comissao da plataforma/i], 22),
+        CREATOR_COMM: findCol([/comissao paga aos criadores/i], 23),
+        PARTNER_COMM: findCol([/comissao paga as agencias parceiras/i], 24),
+        SFP_FEE: findCol([/taxa de servico do sfp/i], 25),
+        ADS_CREATOR_COMM: findCol([/comissao de anuncios da loja paga aos criadores/i], 26),
+        ADS_PARTNER_COMM: findCol([/comissao de anuncios da loja paga as agencias/i], 27),
+        GMV_MAX_FEE: findCol([/taxa de anuncio de gmv max/i], 28),
+        SHIP_COVERED_TT: findCol([/custo de frete coberto pelo tiktok/i], 29),
+        SHIP_PAID_CLIENT: findCol([/^taxa de envio do cliente$/i], 30),
+        SHIP_RETURN_COST: findCol([/custo de frete para devolucoes/i], 32),
+        SHIP_COST: findCol([/^custo do frete$/i], 33),
+        ITEM_FIXED_FEE: findCol([/taxa por item vendido/i], 34)
+    };
+
+    // Map optional "Order payment info" sheet for platform discount (cupom cofinanciado pelo TikTok)
+    const payInfoMap = new Map();
+    if (wb && Array.isArray(wb.SheetNames)) {
+        const paySheetName = wb.SheetNames.find(n => normalizeText(n).includes('payment') || normalizeText(n).includes('pagamento'));
+        if (paySheetName && wb.Sheets[paySheetName]) {
+            const payRows = XLSX.utils.sheet_to_json(wb.Sheets[paySheetName], { header: 1, defval: '' });
+            for (let i = 1; i < payRows.length; i++) {
+                const pr = payRows[i];
+                if (!pr || !pr[0]) continue;
+                const key = `${String(pr[0]).trim()}_${String(pr[1] || '').trim()}`;
+                payInfoMap.set(key, {
+                    platformSkuDiscount: Math.abs(parseNum(pr[3])),
+                    customerGmvAfterDisc: Math.max(0, parseNum(pr[5]))
+                });
+            }
+        }
+    }
+
+    const parsedOrders = [];
+    const cancelledOrdersSet = new Set();
+    const cancelledDetailsMap = new Map();
+    const validSet = new Set();
+    const datesList = [];
+
+    for (let i = headerRowIdx + 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0) continue;
+
+        const orderId = String(row[COL.ORDER_ID] || '').trim();
+        if (!orderId || !/^\d{8,}$/.test(orderId)) continue;
+
+        const skuId = String(row[COL.SKU_ID] || '').trim();
+        const variation = String(row[COL.VARIATION] || '').trim();
+        const productName = String(row[COL.PRODUCT_NAME] || '').trim() || 'Produto TikTok Shop';
+        const statusRaw = String(row[COL.STATUS] || '').trim();
+        const statusNorm = normalizeText(statusRaw);
+        const unsettleReason = String(row[COL.UNSETTLE_REASON] || '').trim();
+
+        const date = formatTikTokDateVal(row[COL.PAY_DATE]);
+        const isoDate = extractISODate(date);
+        const subtotalBruto = Math.max(0, parseNum(row[COL.SUBTOTAL_BRUTO]));
+        const sellerDiscount = Math.abs(parseNum(row[COL.SELLER_DISCOUNT]));
+        const refundAmt = Math.abs(parseNum(row[COL.REFUND_AMOUNT]));
+        const revenue = parseNum(row[COL.REVENUE]);
+        const qty = Math.max(1, Math.round(parseNum(row[COL.QTY]) || 1));
+
+        const isCanceled = statusNorm === 'canceled' || statusNorm === 'cancelled' || statusNorm === 'cancelado' || (revenue <= 0 && refundAmt > 0);
+        if (isCanceled) {
+            cancelledOrdersSet.add(orderId);
+            const lostAmount = refundAmt > 0 ? refundAmt : Math.max(0, subtotalBruto - sellerDiscount);
+            const reasonText = unsettleReason || statusRaw || 'Cancelado / Reembolsado';
+            if (!cancelledDetailsMap.has(orderId)) {
+                cancelledDetailsMap.set(orderId, {
+                    channel: 'tiktok',
+                    orderId,
+                    date,
+                    isoDate,
+                    productName,
+                    sku: variation || skuId,
+                    status: statusRaw || 'Canceled',
+                    reason: reasonText,
+                    amount: lostAmount,
+                    amountRefunded: refundAmt
+                });
+            } else {
+                const prev = cancelledDetailsMap.get(orderId);
+                prev.amount += lostAmount;
+                prev.amountRefunded = (prev.amountRefunded || 0) + refundAmt;
+            }
+            continue;
+        }
+
+        if (revenue <= 0) continue;
+        validSet.add(orderId);
+        if (date) datesList.push(date);
+
+        const totalFees = Math.abs(parseNum(row[COL.ORDER_COST]));
+        const netReceived = parseNum(row[COL.NET_MARGIN]);
+        const platformComm = Math.abs(parseNum(row[COL.PLATFORM_COMM]));
+        const sfpFee = Math.abs(parseNum(row[COL.SFP_FEE]));
+        const creatorComm = Math.abs(parseNum(row[COL.CREATOR_COMM])) + Math.abs(parseNum(row[COL.PARTNER_COMM]))
+            + Math.abs(parseNum(row[COL.ADS_CREATOR_COMM])) + Math.abs(parseNum(row[COL.ADS_PARTNER_COMM]));
+        const gmvMaxFee = Math.abs(parseNum(row[COL.GMV_MAX_FEE]));
+        const fixedItemFee = Math.abs(parseNum(row[COL.ITEM_FIXED_FEE]));
+
+        const shipCost = Math.abs(parseNum(row[COL.SHIP_COST]));
+        const shipCoveredTT = Math.max(0, parseNum(row[COL.SHIP_COVERED_TT]));
+        const shipPaidClient = Math.max(0, parseNum(row[COL.SHIP_PAID_CLIENT]));
+        const shipReturnCost = Math.abs(parseNum(row[COL.SHIP_RETURN_COST]));
+        const netSellerShipping = Math.max(0, shipCost - shipCoveredTT - shipPaidClient) + shipReturnCost;
+
+        const baseCommAndSfp = platformComm + sfpFee;
+        const extraServiceFees = Math.max(0, totalFees - baseCommAndSfp);
+
+        const settleDateStr = formatTikTokDateVal(row[COL.SETTLE_DATE]);
+        const estSettleStr = formatTikTokDateVal(row[COL.EST_SETTLE]);
+        const releaseDate = settleDateStr || (/^\d{4}-\d{2}-\d{2}$/.test(estSettleStr) ? estSettleStr : '');
+        const releaseIsoDate = extractISODate(releaseDate);
+        const createdMs = parseDateTimeMs(isoDate);
+        const settledMs = parseDateTimeMs(extractISODate(settleDateStr));
+        const releaseDays = (Number.isFinite(createdMs) && Number.isFinite(settledMs) && settledMs >= createdMs)
+            ? Math.max(0, (settledMs - createdMs) / 86400000)
+            : null;
+
+        const settlementState = settleDateStr
+            ? 'settled'
+            : (statusNorm === 'delivered' ? 'delivered_pending' : 'in_transit');
+
+        const payInfo = payInfoMap.get(`${orderId}_${skuId}`) || null;
+        const platformSubsidy = payInfo ? payInfo.platformSkuDiscount : 0;
+
+        const model = resolveCanonicalModel('', productName);
+        parsedOrders.push({
+            channel: 'tiktok',
+            orderId,
+            itemId: skuId,
+            date,
+            isoDate,
+            releaseDate,
+            releaseIsoDate,
+            releaseDays,
+            paymentType: settlementState,
+            installments: 1,
+            productName,
+            sku: variation || skuId,
+            variation: variation || skuId || 'Padrão',
+            qty,
+            qtySource: 'sheet',
+            needsQtyCheck: false,
+            subtotal: revenue,
+            netReceived,
+            itemCommission: baseCommAndSfp,
+            itemServiceFee: extraServiceFees,
+            itemFees: totalFees,
+            itemShipping: netSellerShipping,
+            sellerDiscount,
+            sellerCoupon: 0,
+            pixAdj: platformSubsidy,
+            actionAdj: fixedItemFee,
+            financingFee: gmvMaxFee,
+            couponFee: creatorComm,
+            modelKey: model.modelKey,
+            canonicalName: model.canonicalName,
+            defaultModelCost: model.defaultCost
+        });
+    }
+
+    const cancelledList = [...cancelledDetailsMap.values()];
+    const periodText = resolvePeriodText(datesList, filename);
+    const monthKey = inferMonthKey(datesList, filename);
+
+    if (options.returnPayloadOnly) {
+        parsedOrders.forEach(o => {
+            o.channel = 'tiktok';
+            o.monthKey = o.isoDate && /^\d{4}-\d{2}/.test(o.isoDate) ? o.isoDate.slice(0, 7) : monthKey;
+        });
+        cancelledList.forEach(c => {
+            c.channel = 'tiktok';
+            c.monthKey = c.isoDate && /^\d{4}-\d{2}/.test(c.isoDate) ? c.isoDate.slice(0, 7) : monthKey;
+        });
+        return {
+            relPath: options.relPath || filename,
+            sourceType: 'tiktok',
+            monthKey,
+            periodText,
+            fileSize: options.fileSize || 0,
+            mtimeMs: options.mtimeMs || 0,
+            validOrderCount: validSet.size,
+            cancelledCount: cancelledOrdersSet.size,
+            orders: parsedOrders,
+            cancelledOrders: cancelledList,
+            mlPerfRows: []
+        };
+    }
+
+    channelData.tiktok = {
+        orders: parsedOrders,
+        cancelledOrders: cancelledList,
+        validOrdersSet: validSet,
+        cancelledCount: cancelledOrdersSet.size,
+        dates: datesList,
+        filename,
+        periodText
+    };
+    historyFallbackData.tiktok = channelData.tiktok;
+    if (typeof idbSaveChannel === 'function') idbSaveChannel('tiktok', channelData.tiktok);
+
+    if (!options.silent) {
+        try { localStorage.setItem(STORAGE_KEYS.INITIALIZED, '1'); } catch {}
+        rebuildActiveOrders();
+        if (parsedOrders.length === 0) {
+            showToast('Nenhum pedido válido encontrado na planilha TikTok Shop.', 'warn');
+            setReportVisible(hasPrimaryChannelData());
+        } else {
+            recalcAll();
+            setReportVisible(true);
+            showToast(`TikTok Shop importado! (${validSet.size} pedidos · ${periodText})`, 'success');
+        }
+    }
+    return true;
+}
+
+function parseTikTokProductsWorkbook(rows, headerRowIdx, filename, options = {}) {
+    const headerRow = (rows[headerRowIdx] || []).map(c => normalizeText(c));
+    const idxOf = (nameNorm) => headerRow.findIndex(h => h === nameNorm);
+
+    const IDX = {
+        NAME: idxOf('nome do produto') >= 0 ? idxOf('nome do produto') : 0,
+        PROD_ID: idxOf('id de produto') >= 0 ? idxOf('id de produto') : 1,
+        GMV: idxOf('gmv') >= 0 ? idxOf('gmv') : 3,
+        ORDERS: idxOf('pedidos') >= 0 ? idxOf('pedidos') : 18,
+        ITEMS: idxOf('itens vendidos') >= 0 ? idxOf('itens vendidos') : 20,
+        IMPRESSIONS: idxOf('impressoes do produto') >= 0 ? idxOf('impressoes do produto') : 23,
+        CLICKS: idxOf('cliques no produto') >= 0 ? idxOf('cliques no produto') : 24,
+        ATC: idxOf('contagem de adicoes ao carrinho') >= 0 ? idxOf('contagem de adicoes ao carrinho') : 26,
+        COFIN_GMV: headerRow.findIndex(h => h.includes('cofinanciamento do tiktok')),
+        REFUNDS: idxOf('reembolsos') >= 0 ? idxOf('reembolsos') : 39,
+        REFUND_ITEMS: idxOf('itens reembolsados') >= 0 ? idxOf('itens reembolsados') : 40
+    };
+
+    const datesList = [];
+    const periodCell = String(rows[0]?.[0] || '');
+    const dateMatches = periodCell.match(/(\d{2}\/\d{2}\/\d{4})/g);
+    if (dateMatches) {
+        dateMatches.forEach(d => {
+            const iso = extractISODate(d);
+            if (iso) datesList.push(iso);
+        });
+    }
+
+    const parsedOrders = [];
+    const cancelledList = [];
+    const validSet = new Set();
+    let totalImpressions = 0;
+    let totalClicks = 0;
+    let totalAtc = 0;
+    let productsCount = 0;
+
+    for (let i = headerRowIdx + 1; i < rows.length; i++) {
+        const r = rows[i];
+        if (!r || !r[IDX.NAME]) continue;
+        const productName = String(r[IDX.NAME] || '').trim();
+        const prodId = String(r[IDX.PROD_ID] || '').trim();
+        const gmv = Math.max(0, parseNum(r[IDX.GMV]));
+        const ordersCount = Math.max(0, Math.round(parseNum(r[IDX.ORDERS])));
+        const itemsSold = Math.max(0, Math.round(parseNum(r[IDX.ITEMS])));
+        const refundAmt = Math.max(0, parseNum(r[IDX.REFUNDS]));
+        const refundItems = Math.max(0, Math.round(parseNum(r[IDX.REFUND_ITEMS])));
+        const impressions = Math.max(0, Math.round(parseNum(r[IDX.IMPRESSIONS])));
+        const clicks = Math.max(0, Math.round(parseNum(r[IDX.CLICKS])));
+        const atc = Math.max(0, Math.round(parseNum(r[IDX.ATC])));
+        const cofinGmv = IDX.COFIN_GMV >= 0 ? Math.max(0, parseNum(r[IDX.COFIN_GMV])) : gmv;
+
+        productsCount++;
+        totalImpressions += impressions;
+        totalClicks += clicks;
+        totalAtc += atc;
+
+        const defaultDate = datesList[datesList.length - 1] || datesList[0] || '';
+        const model = resolveCanonicalModel('', productName);
+
+        if (refundAmt > 0 || refundItems > 0) {
+            cancelledList.push({
+                channel: 'tiktok',
+                orderId: `TT-REF-${prodId || i}`,
+                date: defaultDate,
+                isoDate: defaultDate,
+                productName,
+                sku: prodId,
+                status: 'Reembolsado',
+                reason: `${refundItems || 1} un. reembolsada(s)`,
+                amount: refundAmt,
+                amountRefunded: refundAmt
+            });
+        }
+
+        const netQty = Math.max(0, itemsSold - refundItems);
+        const netGmv = Math.max(0, gmv - refundAmt);
+        const netOrderCnt = Math.max(1, ordersCount - (refundItems > 0 ? 1 : 0));
+        if (netGmv <= 0 || netQty <= 0) continue;
+
+        const estFees = (netGmv * 0.1503) + (netQty * 6);
+        for (let k = 0; k < netOrderCnt; k++) {
+            const oid = `TT-${prodId ? prodId.slice(-6) : i}-${k + 1}`;
+            validSet.add(oid);
+        }
+        parsedOrders.push({
+            channel: 'tiktok',
+            orderId: `TT-${prodId ? prodId.slice(-6) : i}-1`,
+            itemId: prodId,
+            date: defaultDate,
+            isoDate: defaultDate,
+            productName,
+            sku: prodId,
+            variation: 'Acumulado Produto',
+            qty: netQty,
+            qtySource: 'sheet',
+            needsQtyCheck: false,
+            subtotal: netGmv,
+            netReceived: Math.max(0, netGmv - estFees),
+            itemCommission: netGmv * 0.12,
+            itemServiceFee: (netGmv * 0.0303) + (netQty * 6),
+            itemFees: estFees,
+            itemShipping: 0,
+            sellerDiscount: 0,
+            sellerCoupon: 0,
+            pixAdj: Math.max(0, cofinGmv - gmv),
+            actionAdj: netQty * 6,
+            financingFee: netGmv * 0.0303,
+            couponFee: 0,
+            modelKey: model.modelKey,
+            canonicalName: model.canonicalName,
+            defaultModelCost: model.defaultCost
+        });
+    }
+
+    const periodText = resolvePeriodText(datesList, filename);
+    const monthKey = inferMonthKey(datesList, filename);
+    const perfSummary = { productsCount, totalImpressions, totalClicks, totalAtc };
+
+    if (options.returnPayloadOnly) {
+        parsedOrders.forEach(o => { o.channel = 'tiktok'; o.monthKey = monthKey; });
+        cancelledList.forEach(c => { c.channel = 'tiktok'; c.monthKey = monthKey; });
+        return {
+            relPath: options.relPath || filename,
+            sourceType: 'tiktok',
+            isTikTokProductList: true,
+            perfSummary,
+            monthKey,
+            periodText,
+            fileSize: options.fileSize || 0,
+            mtimeMs: options.mtimeMs || 0,
+            validOrderCount: validSet.size,
+            cancelledCount: cancelledList.length,
+            orders: parsedOrders,
+            cancelledOrders: cancelledList,
+            mlPerfRows: []
+        };
+    }
+
+    if (channelData.tiktok && !channelData.tiktok.isProductListFallback) {
+        channelData.tiktok.perfSummary = perfSummary;
+        if (!options.silent) {
+            showToast(`Funil TikTok Shop atualizado (${productsCount} produtos · ${totalImpressions.toLocaleString('pt-BR')} impr.)`, 'success');
+        }
+        return true;
+    }
+
+    channelData.tiktok = {
+        orders: parsedOrders,
+        cancelledOrders: cancelledList,
+        validOrdersSet: validSet,
+        cancelledCount: cancelledList.length,
+        dates: datesList,
+        filename,
+        periodText,
+        isProductListFallback: true,
+        perfSummary
+    };
+    historyFallbackData.tiktok = channelData.tiktok;
+    if (typeof idbSaveChannel === 'function') idbSaveChannel('tiktok', channelData.tiktok);
+
+    if (!options.silent) {
+        rebuildActiveOrders();
+        recalcAll();
+        setReportVisible(hasPrimaryChannelData());
+        showToast(`TikTok Shop (Lista de Produtos) importado! (${validSet.size} pedidos · ${periodText})`, 'success');
+    }
+    return true;
 }
 
 function parseShopeeWorkbook(rows, headerRowIdx, filename, options = {}) {
@@ -2822,15 +3301,19 @@ function parseMLPerfWorkbook(rows, headerRowIdx, filename, options = {}) {
 }
 
 function rebuildActiveOrders() {
-    if (activeChannel === 'shopee' && !channelData.shopee && channelData.mercadolivre) {
+    if (activeChannel === 'shopee' && !channelData.shopee && (channelData.mercadolivre || channelData.tiktok)) {
         activeChannel = 'all';
     }
-    if (activeChannel === 'mercadolivre' && !channelData.mercadolivre && channelData.shopee) {
+    if (activeChannel === 'mercadolivre' && !channelData.mercadolivre && (channelData.shopee || channelData.tiktok)) {
+        activeChannel = 'all';
+    }
+    if (activeChannel === 'tiktok' && !channelData.tiktok && (channelData.shopee || channelData.mercadolivre)) {
         activeChannel = 'all';
     }
 
     const includeShopee = (activeChannel === 'all' || activeChannel === 'shopee') && Boolean(channelData.shopee);
     const includeML = (activeChannel === 'all' || activeChannel === 'mercadolivre') && Boolean(channelData.mercadolivre);
+    const includeTikTok = (activeChannel === 'all' || activeChannel === 'tiktok') && Boolean(channelData.tiktok);
     const hasDateFilter = Boolean(dateFilter.from || dateFilter.to);
 
     rawOrders = [];
@@ -2859,6 +3342,7 @@ function rebuildActiveOrders() {
 
     if (includeShopee) appendChannelOrders('sh', channelData.shopee, 'Shopee');
     if (includeML) appendChannelOrders('ml', channelData.mercadolivre, 'ML');
+    if (includeTikTok) appendChannelOrders('tk', channelData.tiktok, 'TikTok');
 
     if (activePeriods.length > 0) {
         const uniquePeriods = [...new Set(activePeriods.map(p => p.text))];
@@ -2909,6 +3393,22 @@ function updateChannelUI() {
         }
     }
 
+    const tkCard = document.getElementById('channel-card-tiktok');
+    const tkStatus = document.getElementById('channel-status-tiktok');
+    const tkClear = document.getElementById('channel-clear-tiktok');
+    if (tkCard && tkStatus && tkClear) {
+        if (channelData.tiktok) {
+            const tk = channelData.tiktok;
+            tkCard.classList.add('loaded');
+            tkStatus.textContent = `${tk.validOrdersSet.size} pedidos · ${tk.periodText}`;
+            tkClear.style.display = '';
+        } else {
+            tkCard.classList.remove('loaded');
+            tkStatus.textContent = 'Não importado';
+            tkClear.style.display = 'none';
+        }
+    }
+
     const perfCard = document.getElementById('channel-card-mlperf');
     const perfStatus = document.getElementById('channel-status-mlperf');
     const perfClear = document.getElementById('channel-clear-mlperf');
@@ -2929,6 +3429,7 @@ function updateChannelUI() {
         btn.classList.toggle('active', ch === activeChannel);
         if (ch === 'shopee') btn.disabled = !channelData.shopee;
         else if (ch === 'mercadolivre') btn.disabled = !channelData.mercadolivre;
+        else if (ch === 'tiktok') btn.disabled = !channelData.tiktok;
         else btn.disabled = !hasPrimaryChannelData();
     });
 
@@ -2938,9 +3439,10 @@ function updateChannelUI() {
 }
 
 function setActiveChannel(ch) {
-    if (ch !== 'all' && ch !== 'shopee' && ch !== 'mercadolivre') return;
+    if (ch !== 'all' && ch !== 'shopee' && ch !== 'mercadolivre' && ch !== 'tiktok') return;
     if (ch === 'shopee' && !channelData.shopee) return;
     if (ch === 'mercadolivre' && !channelData.mercadolivre) return;
+    if (ch === 'tiktok' && !channelData.tiktok) return;
     activeChannel = ch;
     rebuildActiveOrders();
     recalcAll();
@@ -2963,7 +3465,7 @@ async function handleClearChannelClick(ch) {
 }
 
 async function clearCurrentChannel(ch) {
-    if (!['shopee', 'mercadolivre', 'mlPerf'].includes(ch)) return;
+    if (!['shopee', 'mercadolivre', 'tiktok', 'mlPerf'].includes(ch)) return;
     currentWorkspaceData[ch] = null;
     currentWorkspaceData.updatedAt = Date.now();
     syncCurrentWorkspaceInference();
@@ -2972,6 +3474,7 @@ async function clearCurrentChannel(ch) {
     }
     channelData.shopee = currentWorkspaceData.shopee;
     channelData.mercadolivre = currentWorkspaceData.mercadolivre;
+    channelData.tiktok = currentWorkspaceData.tiktok;
     channelData.mlPerf = currentWorkspaceData.mlPerf;
     rebuildActiveOrders();
     recalcAll();
@@ -2980,13 +3483,14 @@ async function clearCurrentChannel(ch) {
 }
 
 async function clearCurrentMonthWorkspace() {
-    currentWorkspaceData = { shopee: null, mercadolivre: null, mlPerf: null, updatedAt: 0 };
+    currentWorkspaceData = { shopee: null, mercadolivre: null, tiktok: null, mlPerf: null, updatedAt: 0 };
     if (typeof dbClearCurrentMonthDraft === 'function') {
         await dbClearCurrentMonthDraft();
     }
     if (activeWorkspaceTab === 'current') {
         channelData.shopee = null;
         channelData.mercadolivre = null;
+        channelData.tiktok = null;
         channelData.mlPerf = null;
         rebuildActiveOrders();
         recalcAll();
@@ -2999,7 +3503,7 @@ async function clearCurrentMonthWorkspace() {
 
 async function promoteCurrentMonthToHistory() {
     if (!hasCurrentWorkspacePrimaryData()) {
-        showToast('Importe Shopee e/ou Mercado Pago na aba Mês Atual antes de gravar no histórico.', 'warn');
+        showToast('Importe Shopee, Mercado Pago ou TikTok Shop na aba Mês Atual antes de gravar no histórico.', 'warn');
         return;
     }
     const ok = typeof confirm === 'function'
@@ -3012,7 +3516,7 @@ async function promoteCurrentMonthToHistory() {
         if (typeof dbBackendActive !== 'undefined' && dbBackendActive && typeof dbSyncIngestFile === 'function') {
             let inferredPrimaryMonth = '';
             const payloads = [];
-            for (const src of ['shopee', 'mercadolivre']) {
+            for (const src of ['shopee', 'mercadolivre', 'tiktok']) {
                 const ch = currentWorkspaceData[src];
                 if (!ch) continue;
                 const mk = inferMonthKey(ch.dates || [], ch.filename || '');
@@ -3061,7 +3565,7 @@ async function promoteCurrentMonthToHistory() {
             for (const p of payloads) {
                 await dbSyncIngestFile(p);
             }
-            currentWorkspaceData = { shopee: null, mercadolivre: null, mlPerf: null, updatedAt: 0 };
+            currentWorkspaceData = { shopee: null, mercadolivre: null, tiktok: null, mlPerf: null, updatedAt: 0 };
             if (typeof dbClearCurrentMonthDraft === 'function') await dbClearCurrentMonthDraft();
             activeWorkspaceTab = 'history';
             if (inferredPrimaryMonth) {
@@ -3073,13 +3577,15 @@ async function promoteCurrentMonthToHistory() {
         } else {
             historyFallbackData.shopee = currentWorkspaceData.shopee;
             historyFallbackData.mercadolivre = currentWorkspaceData.mercadolivre;
+            historyFallbackData.tiktok = currentWorkspaceData.tiktok;
             historyFallbackData.mlPerf = currentWorkspaceData.mlPerf;
             if (typeof idbSaveChannel === 'function') {
                 if (historyFallbackData.shopee) await idbSaveChannel('shopee', historyFallbackData.shopee);
                 if (historyFallbackData.mercadolivre) await idbSaveChannel('mercadolivre', historyFallbackData.mercadolivre);
+                if (historyFallbackData.tiktok) await idbSaveChannel('tiktok', historyFallbackData.tiktok);
                 if (historyFallbackData.mlPerf) await idbSaveChannel('mlPerf', historyFallbackData.mlPerf);
             }
-            currentWorkspaceData = { shopee: null, mercadolivre: null, mlPerf: null, updatedAt: 0 };
+            currentWorkspaceData = { shopee: null, mercadolivre: null, tiktok: null, mlPerf: null, updatedAt: 0 };
             if (typeof dbClearCurrentMonthDraft === 'function') await dbClearCurrentMonthDraft();
             switchWorkspaceTab('history');
             showToast('Mês gravado no histórico local!', 'success');
@@ -3114,6 +3620,9 @@ async function clearChannel(ch) {
     } else if (ch === 'mercadolivre') {
         channelData.mercadolivre = null;
         historyFallbackData.mercadolivre = null;
+    } else if (ch === 'tiktok') {
+        channelData.tiktok = null;
+        historyFallbackData.tiktok = null;
     } else if (ch === 'mlPerf') {
         channelData.mlPerf = null;
         historyFallbackData.mlPerf = null;
@@ -3255,7 +3764,8 @@ function groupByProduct() {
                 channels: new Set(),
                 channelStats: {
                     shopee: createEmptyChannelStats(),
-                    mercadolivre: createEmptyChannelStats()
+                    mercadolivre: createEmptyChannelStats(),
+                    tiktok: createEmptyChannelStats()
                 },
                 skus: new Set(),
                 listingNames: new Set(),
@@ -3437,7 +3947,7 @@ function recalcAll() {
         orders: new Set(), units: 0, revenue: 0, cost: 0, fees: 0,
         shipping: 0, tax: 0, packaging: 0, ads: 0, extras: 0, profit: 0
     });
-    const chTotals = { shopee: initChAgg(), mercadolivre: initChAgg() };
+    const chTotals = { shopee: initChAgg(), mercadolivre: initChAgg(), tiktok: initChAgg() };
 
     for (const [key, p] of Object.entries(productSummary)) {
         const cost = getCost(key, p.canonicalName, p.defaultCost);
@@ -3470,13 +3980,13 @@ function recalcAll() {
         p._avgSellingPrice = p.totalQty > 0 ? p.totalRevenue / p.totalQty : 0;
         p._insight = generateInsight(p, targetMargin);
 
-        ['shopee', 'mercadolivre'].forEach(chKey => {
+        ['shopee', 'mercadolivre', 'tiktok'].forEach(chKey => {
             const cs = p.channelStats[chKey];
-            if (cs.revenue <= 0 && cs.qty <= 0) return;
+            if (!cs || (cs.revenue <= 0 && cs.qty <= 0)) return;
             const chTax = cs.revenue * taxRate;
             const chCost = cost * cs.qty;
             const chPkg = extraExpenses.packagingPerUnit * cs.qty;
-            const chAds = chKey === 'shopee' ? activeAdsShopee * shShare : activeAdsML * mlShare;
+            const chAds = chKey === 'shopee' ? activeAdsShopee * shShare : (chKey === 'mercadolivre' ? activeAdsML * mlShare : 0);
             const chExtras = chPkg + chAds;
             const chProfit = cs.revenue - chCost - cs.fees - cs.shipping - chTax - chExtras;
 
@@ -3541,7 +4051,8 @@ function recalcAll() {
         abc,
         channels: {
             shopee: serializeCh(chTotals.shopee),
-            mercadolivre: serializeCh(chTotals.mercadolivre)
+            mercadolivre: serializeCh(chTotals.mercadolivre),
+            tiktok: serializeCh(chTotals.tiktok)
         }
     };
 
@@ -3632,6 +4143,7 @@ function renderTable() {
             metaTags.push(`<span class="abc-badge abc-${abcCls}" title="Curva ${abcCls} (Pareto 80/20): ${fmtPct(p._revSharePct || 0)} da receita · Acum. ${fmtPct(p._cumRevPct || 0)}">Curva ${abcCls}</span>`);
             if (p.channels.has('shopee')) metaTags.push('<span class="channel-tag shopee">Shopee</span>');
             if (p.channels.has('mercadolivre')) metaTags.push('<span class="channel-tag ml">ML</span>');
+            if (p.channels.has('tiktok')) metaTags.push('<span class="channel-tag tk">TikTok</span>');
             if (p.modelKey) metaTags.push(`<span style="font-size:0.7rem;color:var(--text-muted)">${escapeHtml(p.modelKey)}</span>`);
             if (groupingMode === 'model' && p.listingNames.size > 1) {
                 metaTags.push(`<span style="font-size:0.7rem;color:var(--text-muted)">· ${p.listingNames.size} anúncios</span>`);
@@ -3774,7 +4286,7 @@ let currentDetailSimChannels = [];
 
 function buildChannelSimEntry(channelKey, label, badgeClass, cs, p, taxRate) {
     const chTotalRev = lastGrandTotals?.channels?.[channelKey]?.revenue || 0;
-    const chAdsBudget = channelKey === 'shopee' ? extraExpenses.adsShopee : extraExpenses.adsML;
+    const chAdsBudget = channelKey === 'shopee' ? extraExpenses.adsShopee : (channelKey === 'mercadolivre' ? extraExpenses.adsML : 0);
     const adsAllocated = chTotalRev > 0 ? chAdsBudget * (cs.revenue / chTotalRev) : 0;
     return {
         key: channelKey,
@@ -3874,6 +4386,9 @@ function showDetail(key) {
     if (p.channelStats?.mercadolivre?.qty > 0) {
         currentDetailSimChannels.push(buildChannelSimEntry('mercadolivre', 'Mercado Livre', 'ml', p.channelStats.mercadolivre, p, taxRate));
     }
+    if (p.channelStats?.tiktok?.qty > 0) {
+        currentDetailSimChannels.push(buildChannelSimEntry('tiktok', 'TikTok Shop', 'tk', p.channelStats.tiktok, p, taxRate));
+    }
     const simHtml = renderDetailSimulatorPanel(p, currentDetailSimChannels, getTargetMarginPercent());
 
     document.getElementById('modal-body').innerHTML = `
@@ -3904,7 +4419,7 @@ function showDetail(key) {
             <tbody>
                 ${p.orders.map(o => `
                     <tr>
-                        <td><span class="channel-tag ${o.channel === 'shopee' ? 'shopee' : 'ml'}">${o.channel === 'shopee' ? 'Shopee' : 'ML'}</span></td>
+                        <td><span class="channel-tag ${o.channel === 'shopee' ? 'shopee' : (o.channel === 'tiktok' ? 'tk' : 'ml')}">${o.channel === 'shopee' ? 'Shopee' : (o.channel === 'tiktok' ? 'TikTok' : 'ML')}</span></td>
                         <td style="font-size:0.75rem;color:var(--text-muted)">${escapeHtml(o.orderId)}</td>
                         <td style="font-size:0.8rem">${escapeHtml(o.date)}</td>
                         <td style="font-size:0.8rem" title="${escapeHtml(o.productName)}">${escapeHtml(o.variation || o.sku || '—')}</td>
@@ -4024,7 +4539,7 @@ function exportPDF() {
     const isNegativeProfit = profit.includes('-');
     const channelLabel = activeChannel === 'shopee'
         ? 'Shopee'
-        : (activeChannel === 'mercadolivre' ? 'Mercado Livre' : 'Shopee + Mercado Livre');
+        : (activeChannel === 'mercadolivre' ? 'Mercado Livre' : (activeChannel === 'tiktok' ? 'TikTok Shop' : 'Consolidado'));
     const groupLabel = groupingMode === 'model' ? 'Por Modelo' : 'Por Anúncio';
     const items = Object.values(productSummary).sort((a, b) => b._profit - a._profit);
     const pdfTotals = items.reduce((acc, p) => {
@@ -4153,7 +4668,7 @@ function exportPDF() {
         const ins = p._insight;
         const insText = ins.label + (ins.recommended ? ` (${fmt(ins.recommended)})` : '');
         const chTag = p.channels
-            ? [p.channels.has('shopee') ? 'Shopee' : '', p.channels.has('mercadolivre') ? 'ML' : ''].filter(Boolean).join('+')
+            ? [p.channels.has('shopee') ? 'Shopee' : '', p.channels.has('mercadolivre') ? 'ML' : '', p.channels.has('tiktok') ? 'TikTok' : ''].filter(Boolean).join('+')
             : '';
 
         html += `

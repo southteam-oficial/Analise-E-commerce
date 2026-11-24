@@ -502,6 +502,7 @@ body {
 .channel-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .channel-dot.shp { background: var(--brand-red); }
 .channel-dot.ml { background: var(--ink-black); }
+.channel-dot.tk { background: #111113; box-shadow: 0 0 0 1.5px #DC2626; }
 .channel-dot.perf { background: #71717A; }
 .pill-btn {
     background: none; border: none; color: var(--brand-red); font-family: inherit;
@@ -1113,6 +1114,7 @@ table { width: 100%; border-collapse: collapse; }
 .channel-tag { display: inline-flex; align-items: center; padding: 1px 6px; border-radius: 4px; font-size: 0.66rem; font-weight: 800; }
 .channel-tag.shopee { background: var(--brand-red-soft); color: var(--brand-red); border: 1px solid var(--brand-red-border); }
 .channel-tag.ml { background: #111113; color: #FFFFFF; }
+.channel-tag.tk, .channel-tag.tiktok { background: #18181B; color: #FFFFFF; border: 1px solid #DC2626; }
 .badge-qty-warn {
     display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 4px;
     font-size: 0.68rem; font-weight: 700; background: var(--yellow-bg); color: var(--yellow); border: 1px solid #FDE68A;

@@ -10,7 +10,8 @@ const { SouthTeamDB, DEFAULT_DB_PATH } = require('./db');
 const SPREADSHEET_FOLDERS = [
     { dir: 'Relatorio de Vendas 2026 SHP', defaultType: 'shopee' },
     { dir: 'Relatorio de Vendas 2026 ML', defaultType: 'mercadolivre' },
-    { dir: 'Relatorios de desempenho ML', defaultType: 'mlPerf' }
+    { dir: 'Relatorios de desempenho ML', defaultType: 'mlPerf' },
+    { dir: 'Relatorio de Vendas 2026 TIKTOK', defaultType: 'tiktok' }
 ];
 
 const PUBLIC_WEB_FILES = new Set([
